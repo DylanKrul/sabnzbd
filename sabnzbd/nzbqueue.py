@@ -1,5 +1,5 @@
-#!/usr/bin/python -OO
-# Copyright 2008-2017 The SABnzbd-Team <team@sabnzbd.org>
+#!/usr/bin/python3 -OO
+# Copyright 2007-2019 The SABnzbd-Team <team@sabnzbd.org>
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License
@@ -23,14 +23,15 @@ import os
 import logging
 import time
 import datetime
+import functools
 
 import sabnzbd
 from sabnzbd.nzbstuff import NzbObject
-from sabnzbd.misc import exit_sab, cat_to_opts, \
-    get_admin_path, remove_all, globber_full, int_conv
+from sabnzbd.misc import exit_sab, cat_to_opts, int_conv, caller_name, cmp, safe_lower
+from sabnzbd.filesystem import get_admin_path, remove_all, globber_full, remove_file
 from sabnzbd.panic import panic_queue
 import sabnzbd.database as database
-from sabnzbd.decorators import notify_downloader
+from sabnzbd.decorators import NzbQueueLocker
 from sabnzbd.constants import QUEUE_FILE_NAME, QUEUE_VERSION, FUTURE_Q_FOLDER, \
     JOB_ADMIN, LOW_PRIORITY, NORMAL_PRIORITY, HIGH_PRIORITY, TOP_PRIORITY, \
     REPAIR_PRIORITY, STOP_PRIORITY, VERIFIED_FILE, \
@@ -41,11 +42,11 @@ from sabnzbd.articlecache import ArticleCache
 import sabnzbd.downloader
 from sabnzbd.assembler import Assembler, file_has_articles
 import sabnzbd.notifier as notifier
-from sabnzbd.encoding import platform_encode
 from sabnzbd.bpsmeter import BPSMeter
+from sabnzbd.dirscanner import process_single_nzb
 
 
-class NzbQueue(object):
+class NzbQueue:
     """ Singleton NzbQueue """
     do = None
 
@@ -64,11 +65,21 @@ class NzbQueue(object):
         """
         nzo_ids = []
         if repair < 2:
-            # Read the queue from the saved files
-            data = sabnzbd.load_admin(QUEUE_FILE_NAME)
-
-            # Process the data and check compatibility
-            nzo_ids = self.check_compatibility(data)
+            # Try to process the queue file
+            try:
+                data = sabnzbd.load_admin(QUEUE_FILE_NAME)
+                if data:
+                    queue_vers, nzo_ids, _ = data
+                    if not queue_vers == QUEUE_VERSION:
+                        nzo_ids = []
+                        logging.error(T('Incompatible queuefile found, cannot proceed'))
+                        if not repair:
+                            panic_queue(os.path.join(cfg.admin_dir.get_path(), QUEUE_FILE_NAME))
+                            exit_sab(2)
+            except:
+                nzo_ids = []
+                logging.error(T('Error loading %s, corrupt file detected'),
+                              os.path.join(cfg.admin_dir.get_path(), QUEUE_FILE_NAME))
 
         # First handle jobs in the queue file
         folders = []
@@ -99,54 +110,11 @@ class NzbQueue(object):
                             self.add(nzo, save=True)
                     else:
                         try:
-                            os.remove(item)
+                            remove_file(item)
                         except:
                             pass
 
-    def check_compatibility(self, data):
-        """ Do compatibility checks on the loaded data """
-        nzo_ids = []
-        if not data:
-            # Warn about old queue
-            if sabnzbd.OLD_QUEUE and cfg.warned_old_queue() < QUEUE_VERSION:
-                logging.warning(T('Old queue detected, use Status->Repair to convert the queue'))
-                cfg.warned_old_queue.set(QUEUE_VERSION)
-                sabnzbd.config.save_config()
-        else:
-            # Try to process
-            try:
-                queue_vers, nzo_ids, dummy = data
-                if not queue_vers == QUEUE_VERSION:
-                    nzo_ids = []
-                    logging.error(T('Incompatible queuefile found, cannot proceed'))
-                    if not repair:
-                        panic_queue(os.path.join(cfg.admin_dir.get_path(), QUEUE_FILE_NAME))
-                        exit_sab(2)
-            except ValueError:
-                nzo_ids = []
-                logging.error(T('Error loading %s, corrupt file detected'),
-                              os.path.join(cfg.admin_dir.get_path(), QUEUE_FILE_NAME))
-
-        # We need to do a repair in case of old-style pickles
-        if not cfg.converted_nzo_pickles():
-            for nzo_id in nzo_ids:
-                folder, _id = os.path.split(nzo_id)
-                path = get_admin_path(folder, future=False)
-                # This will update them but preserve queue-order
-                if os.path.exists(os.path.join(path, _id)):
-                    self.repair_job(os.path.dirname(path))
-                continue
-
-            # Remove any future-jobs, we can't save those
-            for item in globber_full(os.path.join(cfg.admin_dir.get_path(), FUTURE_Q_FOLDER)):
-                os.remove(item)
-
-            # Done converting
-            cfg.converted_nzo_pickles.set(True)
-            sabnzbd.config.save_config()
-            nzo_ids = []
-        return nzo_ids
-
+    @NzbQueueLocker
     def scan_jobs(self, all=False, action=True):
         """ Scan "incomplete" for missing folders,
             'all' is True: Include active folders
@@ -163,7 +131,7 @@ class NzbQueue(object):
         # Retryable folders from History
         items = sabnzbd.api.build_history(output=True)[0]
         # Anything waiting or active or retryable is a known item
-        registered.extend([platform_encode(os.path.basename(item['path']))
+        registered.extend([os.path.basename(item['path'])
                            for item in items if item['retry'] or item['loaded'] or item['status'] == Status.QUEUED])
 
         # Repair unregistered folders
@@ -179,30 +147,12 @@ class NzbQueue(object):
                     logging.info('Skipping repair for job %s', folder)
         return result
 
-    def retry_all_jobs(self, history_db):
-        """ Retry all retryable jobs in History """
-        result = []
-
-        # Retryable folders from History
-        items = sabnzbd.api.build_history()[0]
-        registered = [(platform_encode(os.path.basename(item['path'])),
-                       item['nzo_id'])
-                       for item in items if item['retry']]
-
-        for job in registered:
-            logging.info('Repairing job %s', job[0])
-            result.append(self.repair_job(job[0]))
-            history_db.remove_history(job[1])
-        return bool(result)
-
     def repair_job(self, folder, new_nzb=None, password=None):
         """ Reconstruct admin for a single job folder, optionally with new NZB """
-        def all_verified(path):
-            """ Return True when all sets have been successfully verified """
-            verified = sabnzbd.load_data(VERIFIED_FILE, path, remove=False) or {'x': False}
-            return all(verified[x] for x in verified)
+        # Check if folder exists
+        if not folder or not os.path.exists(folder):
+            return None
 
-        nzo_id = None
         name = os.path.basename(folder)
         path = os.path.join(folder, JOB_ADMIN)
         if hasattr(new_nzb, 'filename'):
@@ -210,10 +160,13 @@ class NzbQueue(object):
         else:
             filename = ''
         if not filename:
-            if not all_verified(path):
+            # Was this file already post-processed?
+            verified = sabnzbd.load_data(VERIFIED_FILE, path, remove=False)
+            if not verified or not all(verified[x] for x in verified):
                 filename = globber_full(path, '*.gz')
+
             if len(filename) > 0:
-                logging.debug('Repair job %s by reparsing stored NZB', name)
+                logging.debug('Repair job %s by re-parsing stored NZB', name)
                 nzo_id = sabnzbd.add_nzbfile(filename[0], pp=None, script=None, cat=None, priority=None, nzbname=name,
                                              reuse=True, password=password)[1]
             else:
@@ -227,10 +180,9 @@ class NzbQueue(object):
             logging.debug('Repair job %s with new NZB (%s)', name, filename)
             nzo_id = sabnzbd.add_nzbfile(new_nzb, pp=None, script=None, cat=None, priority=None, nzbname=name,
                                          reuse=True, password=password)[1]
-
         return nzo_id
 
-    @notify_downloader
+    @NzbQueueLocker
     def send_back(self, nzo):
         """ Send back job to queue after successful pre-check """
         try:
@@ -238,37 +190,15 @@ class NzbQueue(object):
         except:
             logging.debug('Failed to find NZB file after pre-check (%s)', nzo.nzo_id)
             return
-        from sabnzbd.dirscanner import ProcessSingleFile
-        res, nzo_ids = ProcessSingleFile(nzo.work_name + '.nzb', nzb_path, keep=True, reuse=True)
+
+        # Need to remove it first, otherwise it might still be downloading
+        self.remove(nzo, add_to_history=False, cleanup=False)
+        res, nzo_ids = process_single_nzb(nzo.work_name, nzb_path, keep=True, reuse=True, nzo_id=nzo.nzo_id)
         if res == 0 and nzo_ids:
-            nzo = self.replace_in_q(nzo, nzo_ids[0])
             # Reset reuse flag to make pause/abort on encryption possible
-            nzo.reuse = False
+            self.__nzo_table[nzo_ids[0]].reuse = False
 
-    def replace_in_q(self, nzo, nzo_id):
-        """ Replace nzo by new in at the same spot in the queue, destroy nzo """
-        # Must be a separate function from "send_back()", due to the required queue-lock
-        try:
-            old_id = nzo.nzo_id
-            new_nzo = self.get_nzo(nzo_id)
-            pos = self.__nzo_list.index(new_nzo)
-            targetpos = self.__nzo_list.index(nzo)
-            self.__nzo_list[targetpos] = new_nzo
-            self.__nzo_list.pop(pos)
-            # Reuse the old nzo_id
-            new_nzo.nzo_id = old_id
-            # Therefore: remove the new nzo_id
-            del self.__nzo_table[nzo_id]
-            # And attach the new nzo to the old nzo_id
-            self.__nzo_table[old_id] = new_nzo
-            logging.info('Replacing in queue %s by %s', nzo.final_name, new_nzo.final_name)
-            del nzo
-            return new_nzo
-        except:
-            logging.error(T('Failed to restart NZB after pre-check (%s)'), nzo.nzo_id)
-            logging.info("Traceback: ", exc_info=True)
-            return nzo
-
+    @NzbQueueLocker
     def save(self, save_nzo=None):
         """ Save queue, all nzo's or just the specified one """
         logging.info("Saving queue")
@@ -293,7 +223,7 @@ class NzbQueue(object):
     def generate_future(self, msg, pp=None, script=None, cat=None, url=None, priority=NORMAL_PRIORITY, nzbname=None):
         """ Create and return a placeholder nzo object """
         logging.debug('Creating placeholder NZO')
-        future_nzo = NzbObject(msg, pp, script, None, True, cat=cat, url=url, priority=priority, nzbname=nzbname, status=Status.GRABBING)
+        future_nzo = NzbObject(msg, pp, script, None, futuretype=True, cat=cat, url=url, priority=priority, nzbname=nzbname, status=Status.GRABBING)
         self.add(future_nzo)
         return future_nzo
 
@@ -339,7 +269,8 @@ class NzbQueue(object):
                 nzo.set_final_name_pw(name, password)
             else:
                 # Reset url fetch wait time
-                nzo.wait = None
+                nzo.url_wait = None
+                nzo.url_tries = 0
             return True
         else:
             return False
@@ -350,7 +281,7 @@ class NzbQueue(object):
         else:
             return None
 
-    @notify_downloader
+    @NzbQueueLocker
     def add(self, nzo, save=True, quiet=False):
         if not nzo.nzo_id:
             nzo.nzo_id = sabnzbd.get_new_id('nzo', nzo.workpath, self.__nzo_table)
@@ -399,16 +330,24 @@ class NzbQueue(object):
             if save:
                 self.save(nzo)
 
-            if not (quiet or nzo.status in ('Fetching',)):
+            if not (quiet or nzo.status == Status.FETCHING):
                 notifier.send_notification(T('NZB added to queue'), nzo.filename, 'download', nzo.cat)
 
         if not quiet and cfg.auto_sort():
             self.sort_by_avg_age()
         return nzo.nzo_id
 
-    def remove(self, nzo_id, add_to_history=True, save=True, cleanup=True, keep_basic=False, del_files=False):
+    @NzbQueueLocker
+    def remove(self, nzo_id, add_to_history=True, cleanup=True, delete_all_data=True):
+        """ Remove NZO from queue.
+            It can be added to history directly.
+            Or, we do some clean-up, sometimes leaving some data.
+        """
         if nzo_id in self.__nzo_table:
             nzo = self.__nzo_table.pop(nzo_id)
+            logging.info('[%s] Removing job %s', caller_name(), nzo.final_name)
+
+            # Set statuses
             nzo.deleted = True
             if cleanup and not nzo.is_gone():
                 nzo.status = Status.DELETED
@@ -419,28 +358,23 @@ class NzbQueue(object):
                 history_db = database.HistoryDB()
                 # Add the nzo to the database. Only the path, script and time taken is passed
                 # Other information is obtained from the nzo
-                history_db.add_history_db(nzo, '', '', 0, '', '')
+                history_db.add_history_db(nzo)
                 history_db.close()
                 sabnzbd.history_updated()
-
             elif cleanup:
-                self.cleanup_nzo(nzo, keep_basic, del_files)
+                nzo.purge_data(delete_all_data=delete_all_data)
+            self.save(False)
+            return nzo_id
+        return None
 
-            sabnzbd.remove_data(nzo_id, nzo.workpath)
-            logging.info('Removed job %s', nzo.final_name)
-            if save:
-                self.save(nzo)
-        else:
-            nzo_id = None
-        return nzo_id
-
-    def remove_multiple(self, nzo_ids, del_files=False):
+    @NzbQueueLocker
+    def remove_multiple(self, nzo_ids, delete_all_data=True):
         removed = []
         for nzo_id in nzo_ids:
-            if self.remove(nzo_id, add_to_history=False, save=False, keep_basic=not del_files, del_files=del_files):
+            if self.remove(nzo_id, add_to_history=False, delete_all_data=delete_all_data):
                 removed.append(nzo_id)
         # Save with invalid nzo_id, to that only queue file is saved
-        self.save('x')
+        self.save(False)
 
         # Any files left? Otherwise let's disconnect
         if self.actives(grabs=False) == 0 and cfg.autodisconnect():
@@ -449,20 +383,15 @@ class NzbQueue(object):
 
         return removed
 
+    @NzbQueueLocker
     def remove_all(self, search=None):
-        if search:
-            search = search.lower()
-        removed = []
-        for nzo_id in self.__nzo_table.keys():
-            if (not search) or search in self.__nzo_table[nzo_id].final_name_pw_clean.lower():
-                nzo = self.__nzo_table.pop(nzo_id)
-                nzo.deleted = True
-                self.__nzo_list.remove(nzo)
-                sabnzbd.remove_data(nzo_id, nzo.workpath)
-                self.cleanup_nzo(nzo)
-                removed.append(nzo_id)
-        self.save()
-        return removed
+        """ Remove NZO's that match the search-pattern """
+        nzo_ids = []
+        search = safe_lower(search)
+        for nzo_id, nzo in self.__nzo_table.items():
+            if not search or search in nzo.final_name_pw_clean.lower():
+                nzo_ids.append(nzo_id)
+        return self.remove_multiple(nzo_ids)
 
     def remove_nzf(self, nzo_id, nzf_id, force_delete=False):
         removed = []
@@ -511,7 +440,7 @@ class NzbQueue(object):
             handled.append(nzo_id)
         return handled
 
-    @notify_downloader
+    @NzbQueueLocker
     def resume_nzo(self, nzo_id):
         handled = []
         if nzo_id in self.__nzo_table:
@@ -522,6 +451,7 @@ class NzbQueue(object):
             handled.append(nzo_id)
         return handled
 
+    @NzbQueueLocker
     def switch(self, item_id_1, item_id_2):
         try:
             # Allow an index as second parameter, easier for some skins
@@ -534,10 +464,10 @@ class NzbQueue(object):
             nzo2 = self.__nzo_table[item_id_2]
         except KeyError:
             # One or both jobs missing
-            return (-1, 0)
+            return -1, 0
 
         if nzo1 == nzo2:
-            return (-1, 0)
+            return -1, 0
 
         # get the priorities of the two items
         nzo1_priority = nzo1.priority
@@ -556,7 +486,7 @@ class NzbQueue(object):
             nzo1.priority = nzo2_priority
         item_id_pos1 = -1
         item_id_pos2 = -1
-        for i in xrange(len(self.__nzo_list)):
+        for i in range(len(self.__nzo_list)):
             if item_id_1 == self.__nzo_list[i].nzo_id:
                 item_id_pos1 = i
             elif item_id_2 == self.__nzo_list[i].nzo_id:
@@ -566,42 +496,49 @@ class NzbQueue(object):
                 logging.info('Switching job [%s] %s => [%s] %s', item_id_pos1, item.final_name, item_id_pos2, self.__nzo_list[item_id_pos2].final_name)
                 del self.__nzo_list[item_id_pos1]
                 self.__nzo_list.insert(item_id_pos2, item)
-                return (item_id_pos2, nzo1.priority)
+                return item_id_pos2, nzo1.priority
         # If moving failed/no movement took place
-        return (-1, nzo1.priority)
+        return -1, nzo1.priority
 
+    @NzbQueueLocker
     def move_up_bulk(self, nzo_id, nzf_ids, size):
         if nzo_id in self.__nzo_table:
             for unused in range(size):
                 self.__nzo_table[nzo_id].move_up_bulk(nzf_ids)
 
+    @NzbQueueLocker
     def move_top_bulk(self, nzo_id, nzf_ids):
         if nzo_id in self.__nzo_table:
             self.__nzo_table[nzo_id].move_top_bulk(nzf_ids)
 
+    @NzbQueueLocker
     def move_down_bulk(self, nzo_id, nzf_ids, size):
         if nzo_id in self.__nzo_table:
             for unused in range(size):
                 self.__nzo_table[nzo_id].move_down_bulk(nzf_ids)
 
+    @NzbQueueLocker
     def move_bottom_bulk(self, nzo_id, nzf_ids):
         if nzo_id in self.__nzo_table:
             self.__nzo_table[nzo_id].move_bottom_bulk(nzf_ids)
 
+    @NzbQueueLocker
     def sort_by_avg_age(self, reverse=False):
         logging.info("Sorting by average date... (reversed:%s)", reverse)
         self.__nzo_list = sort_queue_function(self.__nzo_list, _nzo_date_cmp, reverse)
 
+    @NzbQueueLocker
     def sort_by_name(self, reverse=False):
         logging.info("Sorting by name... (reversed:%s)", reverse)
         self.__nzo_list = sort_queue_function(self.__nzo_list, _nzo_name_cmp, reverse)
 
+    @NzbQueueLocker
     def sort_by_size(self, reverse=False):
         logging.info("Sorting by size... (reversed:%s)", reverse)
         self.__nzo_list = sort_queue_function(self.__nzo_list, _nzo_size_cmp, reverse)
 
     def sort_queue(self, field, reverse=None):
-        if isinstance(reverse, basestring):
+        if isinstance(reverse, str):
             if reverse.lower() == 'desc':
                 reverse = True
             else:
@@ -617,6 +554,7 @@ class NzbQueue(object):
         else:
             logging.debug("Sort: %s not recognized", field)
 
+    @NzbQueueLocker
     def __set_priority(self, nzo_id, priority):
         """ Sets the priority on the nzo and places it in the queue at the appropriate position """
         try:
@@ -631,7 +569,7 @@ class NzbQueue(object):
                 return
 
             # Get the current position in the queue
-            for i in xrange(len(self.__nzo_list)):
+            for i in range(len(self.__nzo_list)):
                 if nzo_id == self.__nzo_list[i].nzo_id:
                     nzo_id_pos1 = i
                     break
@@ -689,7 +627,7 @@ class NzbQueue(object):
         except:
             return -1
 
-    @notify_downloader
+    @NzbQueueLocker
     def set_priority(self, nzo_ids, priority):
         try:
             n = -1
@@ -699,11 +637,13 @@ class NzbQueue(object):
         except:
             return -1
 
-    def reset_try_lists(self, nzf=None, nzo=None):
-        if nzf:
-            nzf.reset_try_list()
-        if nzo:
-            nzo.reset_try_list()
+    def reset_try_lists(self, article, article_reset=True):
+        """ Let article get new fetcher and reset trylists """
+        article.fetcher = None
+        if article_reset:
+            article.reset_try_list()
+        article.nzf.reset_try_list()
+        article.nzf.nzo.reset_try_list()
 
     def reset_all_try_lists(self):
         for nzo in self.__nzo_list:
@@ -719,11 +659,16 @@ class NzbQueue(object):
         return False
 
     def get_article(self, server, servers):
+        """ Get next article for jobs in the queue
+            Not locked for performance, since it only reads the queue
+        """
+        # Pre-calculate propagation delay
+        propagtion_delay = float(cfg.propagation_delay() * 60)
         for nzo in self.__nzo_list:
             # Not when queue paused and not a forced item
             if nzo.status not in (Status.PAUSED, Status.GRABBING) or nzo.priority == TOP_PRIORITY:
                 # Check if past propagation delay, or forced
-                if not cfg.propagation_delay() or nzo.priority == TOP_PRIORITY or (nzo.avg_stamp + float(cfg.propagation_delay() * 60)) < time.time():
+                if not propagtion_delay or nzo.priority == TOP_PRIORITY or (nzo.avg_stamp + propagtion_delay) < time.time():
                     if not nzo.server_in_try_list(server):
                         article = nzo.get_article(server, servers)
                         if article:
@@ -733,6 +678,9 @@ class NzbQueue(object):
                         return
 
     def register_article(self, article, found=True):
+        """ Register the articles we tried
+            Not locked for performance, since it only modifies individual NZOs
+        """
         nzf = article.nzf
         nzo = nzf.nzo
 
@@ -773,7 +721,7 @@ class NzbQueue(object):
 
     def end_job(self, nzo):
         """ Send NZO to the post-processing queue """
-        logging.info('Ending job %s', nzo.final_name)
+        logging.info('[%s] Ending job %s', caller_name(), nzo.final_name)
 
         # Notify assembler to call postprocessor
         if not nzo.deleted:
@@ -781,10 +729,9 @@ class NzbQueue(object):
             if nzo.precheck:
                 nzo.save_to_disk()
                 # Check result
-                enough, _ratio = nzo.check_quality()
+                enough, _ratio = nzo.check_availability_ratio()
                 if enough:
                     # Enough data present, do real download
-                    self.cleanup_nzo(nzo, keep_basic=True)
                     self.send_back(nzo)
                     return
                 else:
@@ -793,7 +740,9 @@ class NzbQueue(object):
             Assembler.do.process((nzo, None))
 
     def actives(self, grabs=True):
-        """ Return amount of non-paused jobs, optionally with 'grabbing' items """
+        """ Return amount of non-paused jobs, optionally with 'grabbing' items
+            Not locked for performance, only reads the queue
+        """
         n = 0
         for nzo in self.__nzo_list:
             # Ignore any items that are paused
@@ -806,6 +755,7 @@ class NzbQueue(object):
     def queue_info(self, search=None, start=0, limit=0):
         """ Return list of queued jobs,
             optionally filtered by 'search' and limited by start and limit.
+            Not locked for performance, only reads the queue
         """
         if search:
             search = search.lower()
@@ -836,32 +786,29 @@ class NzbQueue(object):
         return QNFO(bytes_total, bytes_left, bytes_left_previous_page, pnfo_list, q_size, n)
 
     def remaining(self):
-        """ Return bytes left in the queue by non-paused items """
+        """ Return bytes left in the queue by non-paused items
+            Not locked for performance, only reads the queue
+        """
         bytes_left = 0
         for nzo in self.__nzo_list:
-            if nzo.status != 'Paused':
+            if nzo.status != Status.PAUSED:
                 bytes_left += nzo.remaining
         return bytes_left
 
     def is_empty(self):
         empty = True
         for nzo in self.__nzo_list:
-            if not nzo.futuretype and nzo.status != 'Paused':
+            if not nzo.futuretype and nzo.status != Status.PAUSED:
                 empty = False
                 break
         return empty
-
-    def cleanup_nzo(self, nzo, keep_basic=False, del_files=False):
-        # Abort DirectUnpack and let it remove files
-        nzo.abort_direct_unpacker()
-        nzo.purge_data(keep_basic, del_files)
-        ArticleCache.do.purge_articles(nzo.saved_articles)
 
     def stop_idle_jobs(self):
         """ Detect jobs that have zero files left and send them to post processing """
         empty = []
         for nzo in self.__nzo_list:
             if not nzo.futuretype and not nzo.files and nzo.status not in (Status.PAUSED, Status.GRABBING):
+                logging.info('Found idle job %s', nzo.final_name)
                 empty.append(nzo)
 
             # Stall prevention by checking if all servers are in the trylist
@@ -871,8 +818,11 @@ class NzbQueue(object):
                 for nzf in nzo.files:
                     if len(nzf.try_list) == sabnzbd.downloader.Downloader.do.server_nr:
                         # We do not want to reset all article trylists, they are good
+                        logging.info('Resetting bad trylist for file %s in job %s', nzf.filename, nzo.final_name)
                         nzf.reset_try_list()
+
                 # Reset main trylist, minimal performance impact
+                logging.info('Resetting bad trylist for job %s', nzo.final_name)
                 nzo.reset_try_list()
 
         for nzo in empty:
@@ -883,7 +833,7 @@ class NzbQueue(object):
             if nzo.priority == priority:
                 nzo.pause()
 
-    @notify_downloader
+    @NzbQueueLocker
     def resume_on_prio(self, priority):
         for nzo in self.__nzo_list:
             if nzo.priority == priority:
@@ -895,7 +845,7 @@ class NzbQueue(object):
             if nzo.cat == cat:
                 nzo.pause()
 
-    @notify_downloader
+    @NzbQueueLocker
     def resume_on_cat(self, cat):
         for nzo in self.__nzo_list:
             if nzo.cat == cat:
@@ -947,11 +897,11 @@ def sort_queue_function(nzo_list, method, reverse):
     normal_priority = [nzo for nzo in nzo_list if nzo.priority == NORMAL_PRIORITY]
     low_priority = [nzo for nzo in nzo_list if nzo.priority == LOW_PRIORITY]
 
-    ultra_high_priority.sort(cmp=method, reverse=reverse)
-    super_high_priority.sort(cmp=method, reverse=reverse)
-    high_priority.sort(cmp=method, reverse=reverse)
-    normal_priority.sort(cmp=method, reverse=reverse)
-    low_priority.sort(cmp=method, reverse=reverse)
+    ultra_high_priority.sort(key=functools.cmp_to_key(method), reverse=reverse)
+    super_high_priority.sort(key=functools.cmp_to_key(method), reverse=reverse)
+    high_priority.sort(key=functools.cmp_to_key(method), reverse=reverse)
+    normal_priority.sort(key=functools.cmp_to_key(method), reverse=reverse)
+    low_priority.sort(key=functools.cmp_to_key(method), reverse=reverse)
 
     new_list = ultra_high_priority
     new_list.extend(super_high_priority)

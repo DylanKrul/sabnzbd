@@ -1,5 +1,5 @@
-#!/usr/bin/python -OO
-# Copyright 2008-2017 The SABnzbd-Team <team@sabnzbd.org>
+#!/usr/bin/python3 -OO
+# Copyright 2007-2019 The SABnzbd-Team <team@sabnzbd.org>
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License
@@ -23,78 +23,112 @@ import os
 import time
 import cherrypy
 import logging
-import urllib
+import urllib.request, urllib.parse, urllib.error
 import json
 import re
 import hashlib
+import socket
 import ssl
+import functools
 from threading import Thread
 from random import randint
 from xml.sax.saxutils import escape
 
-from sabnzbd.utils.rsslib import RSS, Item
 import sabnzbd
 import sabnzbd.rss
 import sabnzbd.scheduler as scheduler
 
 from Cheetah.Template import Template
-from sabnzbd.misc import real_path, to_units, from_units, \
-    time_format, long_path, calc_age, \
-    cat_to_opts, int_conv, globber, globber_full, remove_all, get_base_url
+from sabnzbd.misc import to_units, from_units, time_format, calc_age, \
+    int_conv, get_base_url, probablyipv4, probablyipv6
+from sabnzbd.filesystem import real_path, long_path, globber, globber_full, remove_all, \
+    clip_path, same_file
 from sabnzbd.newswrapper import GetServerParms
-from sabnzbd.rating import Rating
 from sabnzbd.bpsmeter import BPSMeter
-from sabnzbd.encoding import TRANS, xml_name, LatinFilter, unicoder, special_fixer, \
-    platform_encode
+from sabnzbd.encoding import xml_name, utob
 import sabnzbd.config as config
 import sabnzbd.cfg as cfg
 import sabnzbd.notifier as notifier
 import sabnzbd.newsunpack
 from sabnzbd.downloader import Downloader
 from sabnzbd.nzbqueue import NzbQueue
-import sabnzbd.wizard
 from sabnzbd.utils.servertests import test_nntp_server_dict
-from sabnzbd.decoder import HAVE_YENC, SABYENC_ENABLED
+from sabnzbd.decoder import SABYENC_ENABLED
 from sabnzbd.utils.diskspeed import diskspeedmeasure
 from sabnzbd.utils.getperformance import getpystone
+from sabnzbd.utils.internetspeed import internetspeed
 
-from sabnzbd.constants import NORMAL_PRIORITY, MEBI, DEF_SKIN_COLORS, DEF_STDINTF, \
-    DEF_STDCONFIG, DEF_MAIN_TMPL, DEFAULT_PRIORITY
+from sabnzbd.constants import NORMAL_PRIORITY, MEBI, DEF_SKIN_COLORS, \
+    DEF_STDCONFIG, DEF_MAIN_TMPL, DEFAULT_PRIORITY, CHEETAH_DIRECTIVES
 
-from sabnzbd.lang import list_languages, set_language
+from sabnzbd.lang import list_languages
 
 from sabnzbd.api import list_scripts, list_cats, del_from_section, \
-    api_handler, build_queue, remove_callable, rss_qstatus, build_status, \
+    api_handler, build_queue, build_status, \
     retry_job, retry_all_jobs, build_header, build_history, del_job_files, \
-    format_bytes, std_time, report, del_hist_job, Ttemplate, \
-    build_queue_header, _api_test_email, _api_test_notif
+    format_bytes, report, del_hist_job, Ttemplate, build_queue_header, \
+    _api_test_email, _api_test_notif
+
 
 ##############################################################################
 # Global constants
 ##############################################################################
-DIRECTIVES = {
-    'directiveStartToken': '<!--#',
-    'directiveEndToken': '#-->',
-    'prioritizeSearchListOverSelf': True
-}
-FILTER = LatinFilter
 
 
-def check_server(host, port, ajax):
-    """ Check if server address resolves properly """
+##############################################################################
+# Security functions
+##############################################################################
+def secured_expose(wrap_func=None, check_configlock=False, check_session_key=False):
+    """ Wrapper for both cherrypy.expose and login/access check """
+    if not wrap_func:
+        return functools.partial(secured_expose, check_configlock=check_configlock, check_session_key=check_session_key)
 
-    if host.lower() == 'localhost' and sabnzbd.AMBI_LOCALHOST:
-        return badParameterResponse(T('Warning: LOCALHOST is ambiguous, use numerical IP-address.'), ajax)
+    # Expose to cherrypy
+    wrap_func.exposed = True
 
-    if GetServerParms(host, int_conv(port)):
-        return ""
-    else:
-        return badParameterResponse(T('Server address "%s:%s" is not valid.') % (host, port), ajax)
+    @functools.wraps(wrap_func)
+    def internal_wrap(*args, **kwargs):
+        # Add X-Frame-Headers headers to page-requests
+        if cfg.x_frame_options():
+            cherrypy.response.headers['X-Frame-Options'] = 'SameOrigin'
+
+        # Check if config is locked
+        if check_configlock and cfg.configlock():
+            cherrypy.response.status = 403
+            return 'Access denied - Configuration locked'
+
+        # Check if external access
+        if not check_access():
+            cherrypy.response.status = 403
+            return 'Access denied'
+
+        # Verify login status, only for non-key pages
+        if not check_login() and not check_session_key:
+            raise Raiser('/login/')
+
+        # Verify host used for the visit
+        if not check_hostname():
+            cherrypy.response.status = 403
+            return 'Access denied - Hostname verification failed: https://sabnzbd.org/hostname-check'
+
+        # Some pages need correct session key
+        if check_session_key:
+            msg = check_session(kwargs)
+            if msg:
+                return msg
+
+        # All good, cool!
+        return wrap_func(*args, **kwargs)
+    return internal_wrap
 
 
 def check_access(access_type=4):
-    """ Check if external address is allowed given `access_type`
-        `access_type`: 1=nzb, 2=api, 3=full_api, 4=webui, 5=webui with login for external
+    """ Check if external address is allowed given access_type:
+        1=nzb
+        2=api
+        3=full_api
+        4=webui
+        5=webui with login for external
     """
     referrer = cherrypy.request.remote.ip
 
@@ -103,69 +137,44 @@ def check_access(access_type=4):
     range_ok = not cfg.local_ranges() or bool([1 for r in cfg.local_ranges() if (referrer.startswith(r) or referrer.replace('::ffff:', '').startswith(r))])
     allowed = referrer in ('127.0.0.1', '::ffff:127.0.0.1', '::1') or range_ok or access_type <= cfg.inet_exposure()
     if not allowed:
-        logging.debug('Refused connection to %s', referrer)
+        logging.debug('Refused connection from %s', referrer)
     return allowed
 
 
-def ConvertSpecials(p):
-    """ Convert None to 'None' and 'Default' to '' """
-    if p is None:
-        p = 'None'
-    elif p.lower() == T('Default').lower():
-        p = ''
-    return p
+def check_hostname():
+    """ Check if hostname is allowed, to mitigate DNS-rebinding attack.
+        Similar to CVE-2019-5702, we need to add protection even
+        if only allowed to be accessed via localhost.
+    """
+    # If login is enabled, no API-key can be deducted
+    if cfg.username() and cfg.password():
+        return True
 
+    # Don't allow requests without Host
+    host = cherrypy.request.headers.get('Host')
+    if not host:
+        return False
 
-def Raiser(root='', **kwargs):
-    args = {}
-    for key in kwargs:
-        val = kwargs.get(key)
-        if val:
-            args[key] = val
-    # Add extras
-    if args:
-        root = '%s?%s' % (root, urllib.urlencode(args))
-    # Optionally add the leading /sabnzbd/ (or what the user set)
-    if not root.startswith(cfg.url_base()):
-        root = cherrypy.request.script_name + root
-    # Send the redirect
-    return cherrypy.HTTPRedirect(root)
+    # Remove the port-part (like ':8080'), if it is there, always on the right hand side.
+    # Not to be confused with IPv6 colons (within square brackets)
+    host = re.sub(':[0123456789]+$', '', host).lower()
 
+    # Fine if localhost or IP
+    if host == 'localhost' or probablyipv4(host) or probablyipv6(host):
+        return True
 
-def queueRaiser(root, kwargs):
-    return Raiser(root, start=kwargs.get('start'),
-                  limit=kwargs.get('limit'),
-                  search=kwargs.get('search'))
+    # Check on the whitelist
+    if host in cfg.host_whitelist():
+        return True
 
+    # Fine if ends with ".local" or ".local.", aka mDNS name
+    # See rfc6762 Multicast DNS
+    if host.endswith(('.local', '.local.')):
+        return True
 
-def rssRaiser(root, kwargs):
-    return Raiser(root, feed=kwargs.get('feed'))
-
-
-def IsNone(value):
-    """ Return True if either None, 'None' or '' """
-    return value is None or value == "" or value.lower() == 'none'
-
-
-def Strip(txt):
-    """ Return stripped string, can handle None """
-    try:
-        return txt.strip()
-    except:
-        return None
-
-
-##############################################################################
-# Web login support
-##############################################################################
-def get_users():
-    users = {}
-    users[cfg.username()] = cfg.password()
-    return users
-
-
-def encrypt_pwd(pwd):
-    return pwd
+    # Ohoh, bad
+    log_warning_and_ip(T('Refused connection with hostname "%s" from:') % host)
+    return False
 
 
 # Create a more unique ID for each instance
@@ -177,11 +186,14 @@ def set_login_cookie(remove=False, remember_me=False):
         current process ID of the SAB instance and a random
         number, so cookies cannot be re-used
     """
-    salt = randint(1,1000)
-    cherrypy.response.cookie['login_cookie'] = hashlib.sha1(str(salt) + cherrypy.request.remote.ip + COOKIE_SECRET).hexdigest()
+    salt = randint(1, 1000)
+    cookie_str = utob(str(salt) + cherrypy.request.remote.ip + COOKIE_SECRET)
+    cherrypy.response.cookie['login_cookie'] = hashlib.sha1(cookie_str).hexdigest()
     cherrypy.response.cookie['login_cookie']['path'] = '/'
+    cherrypy.response.cookie['login_cookie']['httponly'] = 1
     cherrypy.response.cookie['login_salt'] = salt
     cherrypy.response.cookie['login_salt']['path'] = '/'
+    cherrypy.response.cookie['login_salt']['httponly'] = 1
 
     # If we want to be remembered
     if remember_me:
@@ -202,7 +214,8 @@ def check_login_cookie():
     if 'login_cookie' not in cherrypy.request.cookie or 'login_salt' not in cherrypy.request.cookie:
         return False
 
-    return cherrypy.request.cookie['login_cookie'].value == hashlib.sha1(str(cherrypy.request.cookie['login_salt'].value) + cherrypy.request.remote.ip + COOKIE_SECRET).hexdigest()
+    cookie_str = utob(str(cherrypy.request.cookie['login_salt'].value) + cherrypy.request.remote.ip + COOKIE_SECRET)
+    return cherrypy.request.cookie['login_cookie'].value == hashlib.sha1(cookie_str).hexdigest()
 
 
 def check_login():
@@ -218,31 +231,40 @@ def check_login():
     return check_login_cookie()
 
 
+def get_users():
+    users = {cfg.username(): cfg.password()}
+    return users
+
+
+def encrypt_pwd(pwd):
+    return pwd
+
+
 def set_auth(conf):
     """ Set the authentication for CherryPy """
     if cfg.username() and cfg.password() and not cfg.html_login():
-        conf.update({'tools.basic_auth.on': True, 'tools.basic_auth.realm': 'SABnzbd',
-                     'tools.basic_auth.users': get_users, 'tools.basic_auth.encrypt': encrypt_pwd})
-        conf.update({'/api': {'tools.basic_auth.on': False},
-                     '%s/api' % cfg.url_base(): {'tools.basic_auth.on': False},
+        conf.update({'tools.auth_basic.on': True, 'tools.auth_basic.realm': 'SABnzbd',
+                     'tools.auth_basic.users': get_users, 'tools.auth_basic.encrypt': encrypt_pwd})
+        conf.update({'/api': {'tools.auth_basic.on': False},
+                     '%s/api' % cfg.url_base(): {'tools.auth_basic.on': False},
                      })
     else:
-        conf.update({'tools.basic_auth.on': False})
+        conf.update({'tools.auth_basic.on': False})
 
 
 def check_session(kwargs):
     """ Check session key """
     if not check_access():
-        return u'Access denied'
+        return 'Access denied'
     key = kwargs.get('session')
     if not key:
         key = kwargs.get('apikey')
     msg = None
     if not key:
-        logging.warning(T('Missing Session key'))
+        log_warning_and_ip(T('Missing Session key'))
         msg = T('Error: Session Key Required')
     elif key != cfg.api_key():
-        logging.warning(T('Error: Session Key Incorrect'))
+        log_warning_and_ip(T('Error: Session Key Incorrect'))
         msg = T('Error: Session Key Incorrect')
     return msg
 
@@ -251,19 +273,9 @@ def check_apikey(kwargs, nokey=False):
     """ Check api key or nzbkey
         Return None when OK, otherwise an error message
     """
-    def log_warning(txt):
-        # Was it proxy forwarded?
-        xff = cherrypy.request.headers.get('X-Forwarded-For')
-        if xff:
-            txt = '%s %s (X-Forwarded-For: %s)>%s' % (txt, cherrypy.request.remote.ip, xff, cherrypy.request.headers.get('User-Agent', '??'))
-        else:
-            txt = '%s %s>%s' % (txt, cherrypy.request.remote.ip, cherrypy.request.headers.get('User-Agent', '??'))
-        logging.warning('%s', txt)
-
     output = kwargs.get('output')
     mode = kwargs.get('mode', '')
     name = kwargs.get('name', '')
-    callback = kwargs.get('callback')
 
     # Lookup required access level
     req_access = sabnzbd.api.api_level(mode, name)
@@ -281,15 +293,15 @@ def check_apikey(kwargs, nokey=False):
             key = kwargs.get('session')
         if not key:
             if cfg.api_warnings():
-                log_warning(T('API Key missing, please enter the api key from Config->General into your 3rd party program:'))
-            return report(output, 'API Key Required', callback=callback)
+                log_warning_and_ip(T('API Key missing, please enter the api key from Config->General into your 3rd party program:'))
+            return report(output, 'API Key Required')
         elif req_access == 1 and key == cfg.nzb_key():
             return None
         elif key == cfg.api_key():
             return None
         else:
-            log_warning(T('API Key incorrect, Use the api key from Config->General in your 3rd party program:'))
-            return report(output, 'API Key Incorrect', callback=callback)
+            log_warning_and_ip(T('API Key incorrect, Use the api key from Config->General in your 3rd party program:'))
+            return report(output, 'API Key Incorrect')
 
     # No active APIKEY, check web credentials instead
     if cfg.username() and cfg.password():
@@ -297,13 +309,55 @@ def check_apikey(kwargs, nokey=False):
             pass
         else:
             if cfg.api_warnings():
-                log_warning(T('Authentication missing, please enter username/password from Config->General into your 3rd party program:'))
-            return report(output, 'Missing authentication', callback=callback)
+                log_warning_and_ip(T('Authentication missing, please enter username/password from Config->General into your 3rd party program:'))
+            return report(output, 'Missing authentication')
     return None
 
 
+def log_warning_and_ip(txt):
+    """ Include the IP and the Proxy-IP for warnings """
+    # Was it proxy forwarded?
+    xff = cherrypy.request.headers.get('X-Forwarded-For')
+    if xff:
+        txt = '%s %s (X-Forwarded-For: %s)>%s' % (txt, cherrypy.request.remote.ip, xff, cherrypy.request.headers.get('User-Agent', '??'))
+    else:
+        txt = '%s %s>%s' % (txt, cherrypy.request.remote.ip, cherrypy.request.headers.get('User-Agent', '??'))
+    logging.warning('%s', txt)
+
+
 ##############################################################################
-class MainPage(object):
+# Helper raiser functions
+##############################################################################
+def Raiser(root='', **kwargs):
+    args = {}
+    for key in kwargs:
+        val = kwargs.get(key)
+        if val:
+            args[key] = val
+    # Add extras
+    if args:
+        root = '%s?%s' % (root, urllib.parse.urlencode(args))
+    # Optionally add the leading /sabnzbd/ (or what the user set)
+    if not root.startswith(cfg.url_base()):
+        root = cherrypy.request.script_name + root
+    # Send the redirect
+    return cherrypy.HTTPRedirect(root)
+
+
+def queueRaiser(root, kwargs):
+    return Raiser(root, start=kwargs.get('start'),
+                  limit=kwargs.get('limit'),
+                  search=kwargs.get('search'))
+
+
+def rssRaiser(root, kwargs):
+    return Raiser(root, feed=kwargs.get('feed'))
+
+
+##############################################################################
+# Page definitions
+##############################################################################
+class MainPage:
 
     def __init__(self):
         self.__root = '/'
@@ -315,16 +369,10 @@ class MainPage(object):
         self.status = Status('/status/')
         self.config = ConfigPage('/config/')
         self.nzb = NzoPage('/nzb/')
-        self.wizard = sabnzbd.wizard.Wizard('/wizard/')
+        self.wizard = Wizard('/wizard/')
 
-    @cherrypy.expose
+    @secured_expose
     def index(self, **kwargs):
-        if not check_access():
-            return Protected()
-
-        if not check_login():
-            raise NeedLogin()
-
         if not cfg.notified_new_skin() and cfg.web_dir() != 'Glitter':
             logging.warning(T('Try our new skin Glitter! Fresh new design that is optimized for desktop and mobile devices. Go to Config -> General to change your skin.'))
         if not cfg.notified_new_skin():
@@ -348,97 +396,34 @@ class MainPage(object):
             bytespersec_list = BPSMeter.do.get_bps_list()
             info['bytespersec_list'] = ','.join([str(bps) for bps in bytespersec_list])
 
-            # For Glitter we pre-load the JSON output
-            if 'Glitter' in sabnzbd.WEB_DIR:
-                # Queue
-                queue = build_queue(limit=cfg.queue_limit(), output='json')[0]
-
-                # History
-                history = {}
-                grand, month, week, day = BPSMeter.do.get_sums()
-                history['total_size'], history['month_size'], history['week_size'], history['day_size'] = \
-                       to_units(grand), to_units(month), to_units(week), to_units(day)
-                history['slots'], fetched_items, history['noofslots'] = build_history(limit=cfg.history_limit(), output='json')
-
-                # Make sure the JSON works, otherwise leave empty
-                try:
-                    info['preload_queue'] = json.dumps({'queue': remove_callable(queue)})
-                    info['preload_history'] = json.dumps({'history': history})
-                except UnicodeDecodeError:
-                    # We use the javascript recognized 'false'
-                    info['preload_queue'] = 'false'
-                    info['preload_history'] = 'false'
-
             template = Template(file=os.path.join(sabnzbd.WEB_DIR, 'main.tmpl'),
-                                filter=FILTER, searchList=[info], compilerSettings=DIRECTIVES)
+                                searchList=[info], compilerSettings=CHEETAH_DIRECTIVES)
             return template.respond()
         else:
             # Redirect to the setup wizard
             raise cherrypy.HTTPRedirect('%s/wizard/' % cfg.url_base())
 
-    @cherrypy.expose
-    def addFile(self, **kwargs):
-        msg = check_session(kwargs)
-        if msg:
-            return msg
-
-        nzbfile = kwargs.get('nzbfile')
-        if nzbfile is not None and nzbfile.filename:
-            if nzbfile.value or nzbfile.file:
-                sabnzbd.add_nzbfile(nzbfile, kwargs.get('pp'), kwargs.get('script'),
-                                    kwargs.get('cat'), kwargs.get('priority', NORMAL_PRIORITY))
-        raise Raiser(self.__root)
-
-    @cherrypy.expose
+    @secured_expose(check_session_key=True)
     def shutdown(self, **kwargs):
-        msg = check_session(kwargs)
-
         # Check for PID
         pid_in = kwargs.get('pid')
         if pid_in and int(pid_in) != os.getpid():
-            msg = "Incorrect PID for this instance, remove PID from URL to initiate shutdown."
+            return "Incorrect PID for this instance, remove PID from URL to initiate shutdown."
 
-        if msg:
-            return msg
-        else:
-            logging.info('Shutdown requested by interface')
-            sabnzbd.halt()
-            cherrypy.engine.exit()
-            sabnzbd.SABSTOP = True
-            return T('SABnzbd shutdown finished')
+        sabnzbd.shutdown_program()
+        return T('SABnzbd shutdown finished')
 
-    @cherrypy.expose
+    @secured_expose(check_session_key=True)
     def pause(self, **kwargs):
-        msg = check_session(kwargs)
-        if msg:
-            return msg
-
         scheduler.plan_resume(0)
         Downloader.do.pause()
         raise Raiser(self.__root)
 
-    @cherrypy.expose
+    @secured_expose(check_session_key=True)
     def resume(self, **kwargs):
-        msg = check_session(kwargs)
-        if msg:
-            return msg
-
         scheduler.plan_resume(0)
         sabnzbd.unpause_all()
         raise Raiser(self.__root)
-
-    @cherrypy.expose
-    def rss(self, **kwargs):
-        msg = check_apikey(kwargs, nokey=True)
-        if msg:
-            return msg
-
-        if kwargs.get('mode') == 'history':
-            return rss_history(cherrypy.url(), limit=kwargs.get('limit', 50), search=kwargs.get('search'))
-        elif kwargs.get('mode') == 'queue':
-            return rss_qstatus()
-        elif kwargs.get('mode') == 'warnings':
-            return rss_warnings()
 
     @cherrypy.expose
     def tapi(self, **kwargs):
@@ -474,26 +459,20 @@ class MainPage(object):
                 return msg
         return api_handler(kwargs)
 
-    @cherrypy.expose
+    @secured_expose
     def scriptlog(self, **kwargs):
         """ Duplicate of scriptlog of History, needed for some skins """
         # No session key check, due to fixed URLs
-        if not check_access():
-            return Protected()
-
         name = kwargs.get('name')
         if name:
-            history_db = sabnzbd.connect_db()
+            history_db = sabnzbd.get_db_connection()
             return ShowString(history_db.get_name(name), history_db.get_script_log(name))
         else:
             raise Raiser(self.__root)
 
-    @cherrypy.expose
+    @secured_expose(check_session_key=True)
     def retry(self, **kwargs):
         """ Duplicate of retry of History, needed for some skins """
-        msg = check_session(kwargs)
-        if msg:
-            return msg
         job = kwargs.get('job', '')
         url = kwargs.get('url', '').strip()
         pp = kwargs.get('pp')
@@ -504,23 +483,183 @@ class MainPage(object):
         del_hist_job(job, del_files=True)
         raise Raiser(self.__root)
 
-    @cherrypy.expose
+    @secured_expose(check_session_key=True)
     def retry_pp(self, **kwargs):
         # Duplicate of History/retry_pp to please the SMPL skin :(
-        msg = check_session(kwargs)
-        if msg:
-            return msg
         retry_job(kwargs.get('job'), kwargs.get('nzbfile'), kwargs.get('password'))
         raise Raiser(self.__root)
 
-    @cherrypy.expose
-    def robots_txt(self):
+    @secured_expose
+    def robots_txt(self, **kwargs):
         """ Keep web crawlers out """
         cherrypy.response.headers['Content-Type'] = 'text/plain'
         return 'User-agent: *\nDisallow: /\n'
 
 ##############################################################################
-class LoginPage(object):
+class Wizard:
+
+    def __init__(self, root):
+        self.__root = root
+
+    @secured_expose(check_configlock=True)
+    def index(self, **kwargs):
+        """ Show the language selection page """
+        if sabnzbd.WIN32:
+            import util.apireg
+            cfg.language.set(util.apireg.get_install_lng())
+            logging.debug('Installer language code "%s"', cfg.language())
+
+        info = build_header(sabnzbd.WIZARD_DIR)
+        info['languages'] = list_languages()
+        template = Template(file=os.path.join(sabnzbd.WIZARD_DIR, 'index.html'),
+                            searchList=[info], compilerSettings=CHEETAH_DIRECTIVES)
+        return template.respond()
+
+    @secured_expose(check_configlock=True)
+    def one(self, **kwargs):
+        """ Accept language and show server page """
+        if kwargs.get('lang'):
+            cfg.language.set(kwargs.get('lang'))
+
+        # Always setup Glitter
+        change_web_dir('Glitter - Default')
+
+        info = build_header(sabnzbd.WIZARD_DIR)
+        info['certificate_validation'] = sabnzbd.CERTIFICATE_VALIDATION
+
+        # Just in case, add server
+        servers = config.get_servers()
+        if not servers:
+            info['host'] = ''
+            info['port'] = ''
+            info['username'] = ''
+            info['password'] = ''
+            info['connections'] = ''
+            info['ssl'] = 0
+            info['ssl_verify'] = 2
+        else:
+            # Sort servers to get the first enabled one
+            server_names = sorted(servers.keys(), key=lambda svr: '%d%02d%s' % (int(not servers[svr].enable()), servers[svr].priority(), servers[svr].displayname().lower()))
+            for server in server_names:
+                # If there are multiple servers, just use the first enabled one
+                s = servers[server]
+                info['host'] = s.host()
+                info['port'] = s.port()
+                info['username'] = s.username()
+                info['password'] = s.password.get_stars()
+                info['connections'] = s.connections()
+                info['ssl'] = s.ssl()
+                info['ssl_verify'] = s.ssl_verify()
+                if s.enable():
+                    break
+        template = Template(file=os.path.join(sabnzbd.WIZARD_DIR, 'one.html'),
+                            searchList=[info], compilerSettings=CHEETAH_DIRECTIVES)
+        return template.respond()
+
+    @secured_expose(check_configlock=True)
+    def two(self, **kwargs):
+        """ Accept server and show the final page for restart """
+        # Save server details
+        if kwargs:
+            kwargs['enable'] = 1
+            handle_server(kwargs)
+
+        config.save_config()
+
+        # Show Restart screen
+        info = build_header(sabnzbd.WIZARD_DIR)
+
+        info['access_url'], info['urls'] = get_access_info()
+        info['download_dir'] = cfg.download_dir.get_clipped_path()
+        info['complete_dir'] = cfg.complete_dir.get_clipped_path()
+
+        template = Template(file=os.path.join(sabnzbd.WIZARD_DIR, 'two.html'),
+                            searchList=[info], compilerSettings=CHEETAH_DIRECTIVES)
+        return template.respond()
+
+    @secured_expose
+    def exit(self, **kwargs):
+        """ Stop SABnzbd """
+        sabnzbd.shutdown_program()
+        return T('SABnzbd shutdown finished')
+
+def get_access_info():
+    """ Build up a list of url's that sabnzbd can be accessed from """
+    # Access_url is used to provide the user a link to sabnzbd depending on the host
+    access_uri = 'localhost'
+    cherryhost = cfg.cherryhost()
+
+    if cherryhost == '0.0.0.0':
+        host = socket.gethostname()
+        socks = [host]
+        # Grab a list of all ips for the hostname
+        try:
+            addresses = socket.getaddrinfo(host, None)
+        except:
+            addresses = []
+        for addr in addresses:
+            address = addr[4][0]
+            # Filter out ipv6 addresses (should not be allowed)
+            if ':' not in address and address not in socks:
+                socks.append(address)
+        if "host" in cherrypy.request.headers:
+            host = cherrypy.request.headers['host']
+            host = host.rsplit(':')[0]
+            access_uri = host
+            socks.insert(0, host)
+        else:
+            socks.insert(0, 'localhost')
+
+    elif cherryhost == '::':
+        host = socket.gethostname()
+        socks = [host]
+        # Grab a list of all ips for the hostname
+        addresses = socket.getaddrinfo(host, None)
+        for addr in addresses:
+            address = addr[4][0]
+            # Only ipv6 addresses will work
+            if ':' in address:
+                address = '[%s]' % address
+                if address not in socks:
+                    socks.append(address)
+        if "host" in cherrypy.request.headers:
+            host = cherrypy.request.headers['host']
+            host = host.rsplit(':')[0]
+            access_uri = host
+            socks.insert(0, host)
+        else:
+            socks.insert(0, 'localhost')
+
+    elif not cherryhost:
+        socks = [socket.gethostname()]
+        access_uri = socket.gethostname()
+    else:
+        socks = [cherryhost]
+        access_uri = cherryhost
+
+    urls = []
+    for sock in socks:
+        if sock:
+            if cfg.enable_https() and cfg.https_port():
+                url = 'https://%s:%s%s' % (sock, cfg.https_port(), cfg.url_base())
+            elif cfg.enable_https():
+                url = 'https://%s:%s%s' % (sock, cfg.cherryport(), cfg.url_base())
+            else:
+                url = 'http://%s:%s%s' % (sock, cfg.cherryport(), cfg.url_base())
+
+            urls.append(url)
+
+    if cfg.enable_https() and cfg.https_port():
+        access_url = 'https://%s:%s%s' % (sock, cfg.https_port(), cfg.url_base())
+    elif cfg.enable_https():
+        access_url = 'https://%s:%s%s' % (access_uri, cfg.cherryport(), cfg.url_base())
+    else:
+        access_url = 'http://%s:%s%s' % (access_uri, cfg.cherryport(), cfg.url_base())
+
+    return access_url, urls
+
+##############################################################################
+class LoginPage:
 
     @cherrypy.expose
     def index(self, **kwargs):
@@ -561,18 +700,18 @@ class LoginPage(object):
 
         # Show login
         template = Template(file=os.path.join(sabnzbd.WEB_DIR_CONFIG, 'login', 'main.tmpl'),
-                                filter=FILTER, searchList=[info], compilerSettings=DIRECTIVES)
+                                searchList=[info], compilerSettings=CHEETAH_DIRECTIVES)
         return template.respond()
 
 
 ##############################################################################
-class NzoPage(object):
+class NzoPage:
 
     def __init__(self, root):
         self.__root = root
         self.__cached_selection = {}  # None
 
-    @cherrypy.expose
+    @secured_expose
     def default(self, *args, **kwargs):
         # Allowed URL's
         # /nzb/SABnzbd_nzo_xxxxx/
@@ -580,11 +719,6 @@ class NzoPage(object):
         # /nzb/SABnzbd_nzo_xxxxx/files
         # /nzb/SABnzbd_nzo_xxxxx/bulk_operation
         # /nzb/SABnzbd_nzo_xxxxx/save
-        if not check_access():
-            return Protected()
-        if not check_login():
-            raise NeedLogin()
-
         nzo_id = None
         for a in args:
             if a.startswith('SABnzbd_nzo'):
@@ -605,7 +739,7 @@ class NzoPage(object):
 
             # /SABnzbd_nzo_xxxxx/files
             elif 'files' in args:
-                info = self.nzo_files(info, pnfo_list, nzo_id)
+                info = self.nzo_files(info, nzo_id)
 
             # /SABnzbd_nzo_xxxxx/save
             elif 'save' in args:
@@ -615,10 +749,10 @@ class NzoPage(object):
             # /SABnzbd_nzo_xxxxx/
             else:
                 info = self.nzo_details(info, pnfo_list, nzo_id)
-                info = self.nzo_files(info, pnfo_list, nzo_id)
+                info = self.nzo_files(info, nzo_id)
 
             template = Template(file=os.path.join(sabnzbd.WEB_DIR, 'nzo.tmpl'),
-                                filter=FILTER, searchList=[info], compilerSettings=DIRECTIVES)
+                                searchList=[info], compilerSettings=CHEETAH_DIRECTIVES)
             return template.respond()
         else:
             # Job no longer exists, go to main page
@@ -640,19 +774,15 @@ class NzoPage(object):
                 cat = pnfo.category
                 if not cat:
                     cat = 'None'
-                filename_pw = xml_name(nzo.final_name_pw_clean)
-                filename = xml_name(nzo.final_name)
-                if nzo.password:
-                    password = xml_name(nzo.password).replace('"', '&quot;')
-                else:
-                    password = ''
+                filename_pw = nzo.final_name_pw_clean
+                filename = nzo.final_name
                 priority = pnfo.priority
 
                 slot['nzo_id'] = str(nzo_id)
                 slot['cat'] = cat
                 slot['filename'] = filename_pw
                 slot['filename_clean'] = filename
-                slot['password'] = password or ''
+                slot['password'] = nzo.password or ''
                 slot['script'] = script
                 slot['priority'] = str(priority)
                 slot['unpackopts'] = str(unpackopts)
@@ -667,20 +797,20 @@ class NzoPage(object):
 
         return info
 
-    def nzo_files(self, info, pnfo_list, nzo_id):
+    def nzo_files(self, info, nzo_id):
         active = []
         nzo = NzbQueue.do.get_nzo(nzo_id)
         if nzo:
             pnfo = nzo.gather_info(full=True)
             info['nzo_id'] = pnfo.nzo_id
-            info['filename'] = xml_name(pnfo.filename)
+            info['filename'] = pnfo.filename
 
             for nzf in pnfo.active_files:
                 checked = False
                 if nzf.nzf_id in self.__cached_selection and \
                    self.__cached_selection[nzf.nzf_id] == 'on':
                     checked = True
-                active.append({'filename': xml_name(nzf.filename if nzf.filename else nzf.subject),
+                active.append({'filename': nzf.filename if nzf.filename else nzf.subject,
                                'mbleft': "%.2f" % (nzf.bytes_left / MEBI),
                                'mb': "%.2f" % (nzf.bytes / MEBI),
                                'size': format_bytes(nzf.bytes),
@@ -707,7 +837,7 @@ class NzoPage(object):
         if index is not None:
             NzbQueue.do.switch(nzo_id, index)
         if name is not None:
-            NzbQueue.do.change_name(nzo_id, special_fixer(name), password)
+            NzbQueue.do.change_name(nzo_id, name, password)
 
         if cat is not None and nzo.cat is not cat and not (nzo.cat == '*' and cat == 'Default'):
             NzbQueue.do.change_cat(nzo_id, cat, priority)
@@ -760,85 +890,62 @@ class NzoPage(object):
 
 
 ##############################################################################
-class QueuePage(object):
+class QueuePage:
 
     def __init__(self, root):
         self.__root = root
 
-    @cherrypy.expose
+    @secured_expose
     def index(self, **kwargs):
-        if not check_access():
-            return Protected()
-        if not check_login():
-            raise NeedLogin()
-
         start = int_conv(kwargs.get('start'))
         limit = int_conv(kwargs.get('limit'))
         search = kwargs.get('search')
         info, _pnfo_list, _bytespersec = build_queue(start=start, limit=limit, trans=True, search=search)
 
         template = Template(file=os.path.join(sabnzbd.WEB_DIR, 'queue.tmpl'),
-                            filter=FILTER, searchList=[info], compilerSettings=DIRECTIVES)
+                            searchList=[info], compilerSettings=CHEETAH_DIRECTIVES)
         return template.respond()
 
-    @cherrypy.expose
+    @secured_expose(check_session_key=True)
     def delete(self, **kwargs):
-        msg = check_session(kwargs)
-        if msg:
-            return msg
         uid = kwargs.get('uid')
         del_files = int_conv(kwargs.get('del_files'))
         if uid:
-            NzbQueue.do.remove(uid, False, keep_basic=not del_files, del_files=del_files)
+            NzbQueue.do.remove(uid, add_to_history=False, delete_all_data=del_files)
         raise queueRaiser(self.__root, kwargs)
 
-    @cherrypy.expose
+    @secured_expose(check_session_key=True)
     def purge(self, **kwargs):
-        msg = check_session(kwargs)
-        if msg:
-            return msg
         NzbQueue.do.remove_all(kwargs.get('search'))
         raise queueRaiser(self.__root, kwargs)
 
-    @cherrypy.expose
+    @secured_expose(check_session_key=True)
     def change_queue_complete_action(self, **kwargs):
         """ Action or script to be performed once the queue has been completed
             Scripts are prefixed with 'script_'
         """
-        msg = check_session(kwargs)
-        if msg:
-            return msg
         action = kwargs.get('action')
         sabnzbd.change_queue_complete_action(action)
         raise queueRaiser(self.__root, kwargs)
 
-    @cherrypy.expose
+    @secured_expose(check_session_key=True)
     def switch(self, **kwargs):
-        msg = check_session(kwargs)
-        if msg:
-            return msg
         uid1 = kwargs.get('uid1')
         uid2 = kwargs.get('uid2')
         if uid1 and uid2:
             NzbQueue.do.switch(uid1, uid2)
         raise queueRaiser(self.__root, kwargs)
 
-    @cherrypy.expose
+    @secured_expose(check_session_key=True)
     def change_opts(self, **kwargs):
-        msg = check_session(kwargs)
-        if msg:
-            return msg
         nzo_id = kwargs.get('nzo_id')
         pp = kwargs.get('pp', '')
         if nzo_id and pp and pp.isdigit():
             NzbQueue.do.change_opts(nzo_id, int(pp))
         raise queueRaiser(self.__root, kwargs)
 
-    @cherrypy.expose
+    @secured_expose(check_session_key=True)
     def change_script(self, **kwargs):
-        msg = check_session(kwargs)
-        if msg:
-            return msg
         nzo_id = kwargs.get('nzo_id')
         script = kwargs.get('script', '')
         if nzo_id and script:
@@ -847,121 +954,76 @@ class QueuePage(object):
             NzbQueue.do.change_script(nzo_id, script)
         raise queueRaiser(self.__root, kwargs)
 
-    @cherrypy.expose
+    @secured_expose(check_session_key=True)
     def change_cat(self, **kwargs):
-        msg = check_session(kwargs)
-        if msg:
-            return msg
         nzo_id = kwargs.get('nzo_id')
         cat = kwargs.get('cat', '')
         if nzo_id and cat:
             if cat == 'None':
                 cat = None
             NzbQueue.do.change_cat(nzo_id, cat)
-            cat, pp, script, priority = cat_to_opts(cat)
-            NzbQueue.do.change_script(nzo_id, script)
-            NzbQueue.do.change_opts(nzo_id, pp)
-            NzbQueue.do.set_priority(nzo_id, priority)
 
         raise queueRaiser(self.__root, kwargs)
 
-    @cherrypy.expose
+    @secured_expose(check_session_key=True)
     def shutdown(self, **kwargs):
-        msg = check_session(kwargs)
-        if msg:
-            return msg
-        else:
-            logging.info('Shutdown requested by interface')
-            sabnzbd.halt()
-            cherrypy.engine.exit()
-            sabnzbd.SABSTOP = True
-            return T('SABnzbd shutdown finished')
+        sabnzbd.shutdown_program()
+        return T('SABnzbd shutdown finished')
 
-    @cherrypy.expose
+    @secured_expose(check_session_key=True)
     def pause(self, **kwargs):
-        msg = check_session(kwargs)
-        if msg:
-            return msg
         scheduler.plan_resume(0)
         Downloader.do.pause()
         raise queueRaiser(self.__root, kwargs)
 
-    @cherrypy.expose
+    @secured_expose(check_session_key=True)
     def resume(self, **kwargs):
-        msg = check_session(kwargs)
-        if msg:
-            return msg
         scheduler.plan_resume(0)
         sabnzbd.unpause_all()
         raise queueRaiser(self.__root, kwargs)
 
-    @cherrypy.expose
+    @secured_expose(check_session_key=True)
     def pause_nzo(self, **kwargs):
-        msg = check_session(kwargs)
-        if msg:
-            return msg
         uid = kwargs.get('uid', '')
         NzbQueue.do.pause_multiple_nzo(uid.split(','))
         raise queueRaiser(self.__root, kwargs)
 
-    @cherrypy.expose
+    @secured_expose(check_session_key=True)
     def resume_nzo(self, **kwargs):
-        msg = check_session(kwargs)
-        if msg:
-            return msg
         uid = kwargs.get('uid', '')
         NzbQueue.do.resume_multiple_nzo(uid.split(','))
         raise queueRaiser(self.__root, kwargs)
 
-    @cherrypy.expose
+    @secured_expose(check_session_key=True)
     def set_priority(self, **kwargs):
-        msg = check_session(kwargs)
-        if msg:
-            return msg
         NzbQueue.do.set_priority(kwargs.get('nzo_id'), kwargs.get('priority'))
         raise queueRaiser(self.__root, kwargs)
 
-    @cherrypy.expose
+    @secured_expose(check_session_key=True)
     def sort_by_avg_age(self, **kwargs):
-        msg = check_session(kwargs)
-        if msg:
-            return msg
         NzbQueue.do.sort_queue('avg_age', kwargs.get('dir'))
         raise queueRaiser(self.__root, kwargs)
 
-    @cherrypy.expose
+    @secured_expose(check_session_key=True)
     def sort_by_name(self, **kwargs):
-        msg = check_session(kwargs)
-        if msg:
-            return msg
         NzbQueue.do.sort_queue('name', kwargs.get('dir'))
         raise queueRaiser(self.__root, kwargs)
 
-    @cherrypy.expose
+    @secured_expose(check_session_key=True)
     def sort_by_size(self, **kwargs):
-        msg = check_session(kwargs)
-        if msg:
-            return msg
         NzbQueue.do.sort_queue('size', kwargs.get('dir'))
         raise queueRaiser(self.__root, kwargs)
 
 
 ##############################################################################
-class HistoryPage(object):
+class HistoryPage:
 
     def __init__(self, root):
         self.__root = root
-        self.__verbose = False
-        self.__verbose_list = []
         self.__failed_only = False
 
-    @cherrypy.expose
+    @secured_expose
     def index(self, **kwargs):
-        if not check_access():
-            return Protected()
-        if not check_login():
-            raise NeedLogin()
-
         start = int_conv(kwargs.get('start'))
         limit = int_conv(kwargs.get('limit'))
         search = kwargs.get('search')
@@ -970,10 +1032,7 @@ class HistoryPage(object):
             failed_only = self.__failed_only
 
         history = build_header()
-
-        history['isverbose'] = self.__verbose
         history['failed_only'] = failed_only
-
         history['rating_enable'] = bool(cfg.rating_enable())
 
         postfix = T('B')  # : Abbreviation for bytes, as in GB
@@ -982,7 +1041,7 @@ class HistoryPage(object):
                to_units(grand, postfix=postfix), to_units(month, postfix=postfix), \
                to_units(week, postfix=postfix), to_units(day, postfix=postfix)
 
-        history['lines'], history['fetched'], history['noofslots'] = build_history(limit=limit, start=start, verbose=self.__verbose, verbose_list=self.__verbose_list, search=search, failed_only=failed_only)
+        history['lines'], history['fetched'], history['noofslots'] = build_history(limit=limit, start=start, search=search, failed_only=failed_only)
 
         if search:
             history['search'] = escape(search)
@@ -999,23 +1058,17 @@ class HistoryPage(object):
         history['time_format'] = time_format
 
         template = Template(file=os.path.join(sabnzbd.WEB_DIR, 'history.tmpl'),
-                            filter=FILTER, searchList=[history], compilerSettings=DIRECTIVES)
+                            searchList=[history], compilerSettings=CHEETAH_DIRECTIVES)
         return template.respond()
 
-    @cherrypy.expose
+    @secured_expose(check_session_key=True)
     def purge(self, **kwargs):
-        msg = check_session(kwargs)
-        if msg:
-            return msg
-        history_db = sabnzbd.connect_db()
+        history_db = sabnzbd.get_db_connection()
         history_db.remove_history()
         raise queueRaiser(self.__root, kwargs)
 
-    @cherrypy.expose
+    @secured_expose(check_session_key=True)
     def delete(self, **kwargs):
-        msg = check_session(kwargs)
-        if msg:
-            return msg
         job = kwargs.get('job')
         del_files = int_conv(kwargs.get('del_files'))
         if job:
@@ -1024,89 +1077,34 @@ class HistoryPage(object):
                 del_hist_job(job, del_files=del_files)
         raise queueRaiser(self.__root, kwargs)
 
-    @cherrypy.expose
+    @secured_expose(check_session_key=True)
     def retry_pp(self, **kwargs):
-        msg = check_session(kwargs)
-        if msg:
-            return msg
         retry_job(kwargs.get('job'), kwargs.get('nzbfile'), kwargs.get('password'))
         raise queueRaiser(self.__root, kwargs)
 
-    @cherrypy.expose
+    @secured_expose(check_session_key=True)
     def retry_all(self, **kwargs):
-        msg = check_session(kwargs)
-        if msg:
-            return msg
         retry_all_jobs()
         raise queueRaiser(self.__root, kwargs)
 
-    @cherrypy.expose
-    def purge_failed(self, **kwargs):
-        msg = check_session(kwargs)
-        if msg:
-            return msg
-        del_files = bool(int_conv(kwargs.get('del_files')))
-        history_db = sabnzbd.connect_db()
-        if del_files:
-            del_job_files(history_db.get_failed_paths())
-        history_db.remove_failed()
-        raise queueRaiser(self.__root, kwargs)
-
-    @cherrypy.expose
+    @secured_expose(check_session_key=True)
     def reset(self, **kwargs):
-        msg = check_session(kwargs)
-        if msg:
-            return msg
         # sabnzbd.reset_byte_counter()
         raise queueRaiser(self.__root, kwargs)
 
-    @cherrypy.expose
-    def tog_verbose(self, **kwargs):
-        msg = check_session(kwargs)
-        if msg:
-            return msg
-        jobs = kwargs.get('jobs')
-        if not jobs:
-            self.__verbose = not self.__verbose
-            self.__verbose_list = []
-        else:
-            if self.__verbose:
-                self.__verbose = False
-            else:
-                jobs = jobs.split(',')
-                for job in jobs:
-                    if job in self.__verbose_list:
-                        self.__verbose_list.remove(job)
-                    else:
-                        self.__verbose_list.append(job)
-        raise queueRaiser(self.__root, kwargs)
-
-    @cherrypy.expose
-    def tog_failed_only(self, **kwargs):
-        msg = check_session(kwargs)
-        if msg:
-            return msg
-        self.__failed_only = not self.__failed_only
-        raise queueRaiser(self.__root, kwargs)
-
-    @cherrypy.expose
+    @secured_expose
     def scriptlog(self, **kwargs):
         """ Duplicate of scriptlog of History, needed for some skins """
         # No session key check, due to fixed URLs
-        if not check_access():
-            return Protected()
         name = kwargs.get('name')
         if name:
-            history_db = sabnzbd.connect_db()
+            history_db = sabnzbd.get_db_connection()
             return ShowString(history_db.get_name(name), history_db.get_script_log(name))
         else:
             raise Raiser(self.__root)
 
-    @cherrypy.expose
+    @secured_expose(check_session_key=True)
     def retry(self, **kwargs):
-        msg = check_session(kwargs)
-        if msg:
-            return msg
         job = kwargs.get('job', '')
         url = kwargs.get('url', '').strip()
         pp = kwargs.get('pp')
@@ -1119,7 +1117,7 @@ class HistoryPage(object):
 
 
 ##############################################################################
-class ConfigPage(object):
+class ConfigPage:
 
     def __init__(self, root):
         self.__root = root
@@ -1134,26 +1132,19 @@ class ConfigPage(object):
         self.sorting = ConfigSorting('/config/sorting/')
         self.special = ConfigSpecial('/config/special/')
 
-    @cherrypy.expose
+    @secured_expose(check_configlock=True)
     def index(self, **kwargs):
-        if not check_access():
-            return Protected()
-        if not check_login():
-            raise NeedLogin()
-
         conf = build_header(sabnzbd.WEB_DIR_CONFIG)
-        conf['configfn'] = config.get_filename()
+        conf['configfn'] = clip_path(config.get_filename())
         conf['cmdline'] = sabnzbd.CMDLINE
         conf['build'] = sabnzbd.version.__baseline__[:7]
 
         conf['have_unzip'] = bool(sabnzbd.newsunpack.ZIP_COMMAND)
         conf['have_7zip'] = bool(sabnzbd.newsunpack.SEVEN_COMMAND)
-        conf['have_cryptography'] = bool(sabnzbd.HAVE_CRYPTOGRAPHY)
-        conf['have_yenc'] = HAVE_YENC
         conf['have_sabyenc'] = SABYENC_ENABLED
         conf['have_mt_par2'] = sabnzbd.newsunpack.PAR2_MT
 
-        conf['have_ssl_context'] = sabnzbd.HAVE_SSL_CONTEXT
+        conf['certificate_validation'] = sabnzbd.CERTIFICATE_VALIDATION
         conf['ssl_version'] = ssl.OPENSSL_VERSION
 
         new = {}
@@ -1164,77 +1155,23 @@ class ConfigPage(object):
         conf['folders'] = NzbQueue.do.scan_jobs(all=False, action=False)
 
         template = Template(file=os.path.join(sabnzbd.WEB_DIR_CONFIG, 'config.tmpl'),
-                            filter=FILTER, searchList=[conf], compilerSettings=DIRECTIVES)
+                            searchList=[conf], compilerSettings=CHEETAH_DIRECTIVES)
         return template.respond()
 
-    @cherrypy.expose
+    @secured_expose(check_session_key=True)
     def restart(self, **kwargs):
-        msg = check_session(kwargs)
-        if msg:
-            return msg
-        else:
-            logging.info('Restart requested by interface')
-            # Do the shutdown async to still send goodbye to browser
-            Thread(target=sabnzbd.trigger_restart, kwargs={'timeout': 1}).start()
-            return T('&nbsp<br />SABnzbd shutdown finished.<br />Wait for about 5 second and then click the button below.<br /><br /><strong><a href="..">Refresh</a></strong><br />')
+        logging.info('Restart requested by interface')
+        # Do the shutdown async to still send goodbye to browser
+        Thread(target=sabnzbd.trigger_restart, kwargs={'timeout': 1}).start()
+        return T('&nbsp<br />SABnzbd shutdown finished.<br />Wait for about 5 second and then click the button below.<br /><br /><strong><a href="..">Refresh</a></strong><br />')
 
-    @cherrypy.expose
+    @secured_expose(check_session_key=True)
     def repair(self, **kwargs):
-        msg = check_session(kwargs)
-        if msg:
-            return msg
-        else:
-            logging.info('Queue repair requested by interface')
-            sabnzbd.request_repair()
-            # Do the shutdown async to still send goodbye to browser
-            Thread(target=sabnzbd.trigger_restart, kwargs={'timeout': 1}).start()
-            return T('&nbsp<br />SABnzbd shutdown finished.<br />Wait for about 5 second and then click the button below.<br /><br /><strong><a href="..">Refresh</a></strong><br />')
-
-
-    @cherrypy.expose
-    def delete(self, **kwargs):
-        msg = check_session(kwargs)
-        if msg:
-            return msg
-        orphan_delete(kwargs)
-        raise Raiser(self.__root)
-
-    @cherrypy.expose
-    def add(self, **kwargs):
-        msg = check_session(kwargs)
-        if msg:
-            return msg
-        orphan_add(kwargs)
-        raise Raiser(self.__root)
-
-
-def orphan_delete(kwargs):
-    path = kwargs.get('name')
-    if path:
-        path = platform_encode(path)
-        path = os.path.join(long_path(cfg.download_dir.get_path()), path)
-        logging.info('Removing orphaned job %s', path)
-        remove_all(path, recursive=True)
-
-def orphan_delete_all():
-    paths = NzbQueue.do.scan_jobs(all=False, action=False)
-    for path in paths:
-        kwargs = {'name': path}
-        orphan_delete(kwargs)
-
-def orphan_add(kwargs):
-    path = kwargs.get('name')
-    if path:
-        path = platform_encode(path)
-        path = os.path.join(long_path(cfg.download_dir.get_path()), path)
-        logging.info('Re-adding orphaned job %s', path)
-        NzbQueue.do.repair_job(path, None, None)
-
-def orphan_add_all():
-    paths = NzbQueue.do.scan_jobs(all=False, action=False)
-    for path in paths:
-        kwargs = {'name': path}
-        orphan_add(kwargs)
+        logging.info('Queue repair requested by interface')
+        sabnzbd.request_repair()
+        # Do the shutdown async to still send goodbye to browser
+        Thread(target=sabnzbd.trigger_restart, kwargs={'timeout': 1}).start()
+        return T('&nbsp<br />SABnzbd shutdown finished.<br />Wait for about 5 second and then click the button below.<br /><br /><strong><a href="..">Refresh</a></strong><br />')
 
 
 ##############################################################################
@@ -1245,40 +1182,27 @@ LIST_DIRPAGE = (
 )
 
 
-class ConfigFolders(object):
+class ConfigFolders:
 
     def __init__(self, root):
         self.__root = root
 
-    @cherrypy.expose
+    @secured_expose(check_configlock=True)
     def index(self, **kwargs):
-        if cfg.configlock() or not check_access():
-            return Protected()
-        if not check_login():
-            raise NeedLogin()
-
         conf = build_header(sabnzbd.WEB_DIR_CONFIG)
 
         for kw in LIST_DIRPAGE:
             conf[kw] = config.get_config('misc', kw)()
 
-        # Temporary fix, problem with build_header
-        conf['restart_req'] = sabnzbd.RESTART_REQ
-
         template = Template(file=os.path.join(sabnzbd.WEB_DIR_CONFIG, 'config_folders.tmpl'),
-                            filter=FILTER, searchList=[conf], compilerSettings=DIRECTIVES)
+                            searchList=[conf], compilerSettings=CHEETAH_DIRECTIVES)
         return template.respond()
 
-    @cherrypy.expose
+    @secured_expose(check_session_key=True, check_configlock=True)
     def saveDirectories(self, **kwargs):
-        msg = check_session(kwargs)
-        if msg:
-            return msg
-
         for kw in LIST_DIRPAGE:
             value = kwargs.get(kw)
             if value is not None:
-                value = platform_encode(value)
                 if kw in ('complete_dir', 'dirscan_dir'):
                     msg = config.get_config('misc', kw).set(value, create=True)
                 else:
@@ -1297,7 +1221,7 @@ class ConfigFolders(object):
 
 ##############################################################################
 SWITCH_LIST = \
-    ('par_option', 'top_only', 'ssl_ciphers', 'direct_unpack', 'enable_meta',
+    ('par_option', 'top_only', 'direct_unpack', 'enable_meta', 'win_process_prio',
              'auto_sort', 'propagation_delay', 'auto_disconnect', 'flat_unpack',
              'safe_postproc', 'no_dupes', 'replace_spaces', 'replace_dots',
              'ignore_samples', 'pause_on_post_processing', 'nice', 'ionice',
@@ -1316,21 +1240,16 @@ SWITCH_LIST = \
      )
 
 
-class ConfigSwitches(object):
+class ConfigSwitches:
 
     def __init__(self, root):
         self.__root = root
 
-    @cherrypy.expose
+    @secured_expose(check_configlock=True)
     def index(self, **kwargs):
-        if cfg.configlock() or not check_access():
-            return Protected()
-        if not check_login():
-            raise NeedLogin()
-
         conf = build_header(sabnzbd.WEB_DIR_CONFIG)
 
-        conf['have_ssl_context'] = sabnzbd.HAVE_SSL_CONTEXT
+        conf['certificate_validation'] = sabnzbd.CERTIFICATE_VALIDATION
         conf['have_nice'] = bool(sabnzbd.newsunpack.NICE_COMMAND)
         conf['have_ionice'] = bool(sabnzbd.newsunpack.IONICE_COMMAND)
         conf['cleanup_list'] = cfg.cleanup_list.get_string()
@@ -1342,18 +1261,14 @@ class ConfigSwitches(object):
         conf['scripts'] = list_scripts() or ['None']
 
         template = Template(file=os.path.join(sabnzbd.WEB_DIR_CONFIG, 'config_switches.tmpl'),
-                            filter=FILTER, searchList=[conf], compilerSettings=DIRECTIVES)
+                            searchList=[conf], compilerSettings=CHEETAH_DIRECTIVES)
         return template.respond()
 
-    @cherrypy.expose
+    @secured_expose(check_session_key=True, check_configlock=True)
     def saveSwitches(self, **kwargs):
-        msg = check_session(kwargs)
-        if msg:
-            return msg
-
         for kw in SWITCH_LIST:
             item = config.get_config('misc', kw)
-            value = platform_encode(kwargs.get(kw))
+            value = kwargs.get(kw)
             if kw == 'unwanted_extensions' and value:
                 value = value.lower().replace('.', '')
             msg = item.set(value)
@@ -1371,52 +1286,40 @@ class ConfigSwitches(object):
 
 ##############################################################################
 SPECIAL_BOOL_LIST = \
-    ('start_paused', 'no_penalties', 'ignore_wrong_unrar', 'overwrite_files', 'enable_par_cleanup',
+    ('start_paused', 'no_penalties', 'fast_fail', 'ignore_wrong_unrar', 'overwrite_files', 'enable_par_cleanup',
               'queue_complete_pers', 'api_warnings', 'ampm', 'enable_unrar', 'enable_unzip', 'enable_7zip',
-              'enable_filejoin', 'enable_tsjoin', 'ignore_unrar_dates',
-              'multipar', 'osx_menu', 'osx_speed', 'win_menu', 'use_pickle', 'allow_incomplete_nzb',
+              'enable_filejoin', 'enable_tsjoin', 'ignore_unrar_dates', 'debug_log_decoding',
+              'multipar', 'osx_menu', 'osx_speed', 'win_menu', 'allow_incomplete_nzb',
               'rss_filenames', 'ipv6_hosting', 'keep_awake', 'empty_postproc', 'html_login', 'wait_for_dfolder',
               'max_art_opt', 'warn_empty_nzb', 'enable_bonjour', 'reject_duplicate_files', 'warn_dupl_jobs',
               'replace_illegal', 'backup_for_duplicates', 'disable_api_key', 'api_logging',
+              'ignore_empty_files', 'x_frame_options', 'require_modern_tls'
      )
 SPECIAL_VALUE_LIST = \
-    ('size_limit', 'folder_max_length', 'fsys_type', 'movie_rename_limit', 'nomedia_marker',
-              'req_completion_rate', 'wait_ext_drive', 'show_sysload', 'url_base',
-              'direct_unpack_threads', 'ipv6_servers', 'selftest_host', 'rating_host'
+    ('size_limit', 'movie_rename_limit', 'nomedia_marker', 'max_url_retries', 'req_completion_rate', 'wait_ext_drive',
+        'show_sysload', 'url_base', 'direct_unpack_threads', 'ipv6_servers', 'selftest_host', 'rating_host'
      )
-SPECIAL_LIST_LIST = ('rss_odd_titles', 'quick_check_ext_ignore')
+SPECIAL_LIST_LIST = ('rss_odd_titles', 'quick_check_ext_ignore', 'host_whitelist')
 
 
-class ConfigSpecial(object):
+class ConfigSpecial:
 
     def __init__(self, root):
         self.__root = root
 
-    @cherrypy.expose
+    @secured_expose(check_configlock=True)
     def index(self, **kwargs):
-        if cfg.configlock() or not check_access():
-            return Protected()
-        if not check_login():
-            raise NeedLogin()
-
         conf = build_header(sabnzbd.WEB_DIR_CONFIG)
-
-        conf['nt'] = sabnzbd.WIN32
-
         conf['switches'] = [(kw, config.get_config('misc', kw)(), config.get_config('misc', kw).default()) for kw in SPECIAL_BOOL_LIST]
         conf['entries'] = [(kw, config.get_config('misc', kw)(), config.get_config('misc', kw).default()) for kw in SPECIAL_VALUE_LIST]
         conf['entries'].extend([(kw, config.get_config('misc', kw).get_string(), config.get_config('misc', kw).default_string()) for kw in SPECIAL_LIST_LIST])
 
         template = Template(file=os.path.join(sabnzbd.WEB_DIR_CONFIG, 'config_special.tmpl'),
-                            filter=FILTER, searchList=[conf], compilerSettings=DIRECTIVES)
+                            searchList=[conf], compilerSettings=CHEETAH_DIRECTIVES)
         return template.respond()
 
-    @cherrypy.expose
+    @secured_expose(check_session_key=True, check_configlock=True)
     def saveSpecial(self, **kwargs):
-        msg = check_session(kwargs)
-        if msg:
-            return msg
-
         for kw in SPECIAL_BOOL_LIST + SPECIAL_VALUE_LIST + SPECIAL_LIST_LIST:
             item = config.get_config('misc', kw)
             value = kwargs.get(kw)
@@ -1430,19 +1333,19 @@ class ConfigSpecial(object):
 
 ##############################################################################
 GENERAL_LIST = (
-    'host', 'port', 'username', 'refresh_rate', 'cache_limit',
+    'host', 'port', 'username', 'refresh_rate', 'language', 'cache_limit',
     'local_ranges', 'inet_exposure', 'enable_https', 'https_port',
     'https_cert', 'https_key', 'https_chain', 'enable_https_verification',
     'auto_browser', 'check_new_rel'
 )
 
 
-class ConfigGeneral(object):
+class ConfigGeneral:
 
     def __init__(self, root):
         self.__root = root
 
-    @cherrypy.expose
+    @secured_expose(check_configlock=True)
     def index(self, **kwargs):
         def ListColors(web_dir):
             lst = []
@@ -1466,35 +1369,21 @@ class ConfigGeneral(object):
             else:
                 return ''
 
-        if cfg.configlock() or not check_access():
-            return Protected()
-        if not check_login():
-            raise NeedLogin()
-
         conf = build_header(sabnzbd.WEB_DIR_CONFIG)
 
         conf['configfn'] = config.get_filename()
-
-        # Temporary fix, problem with build_header
-        conf['restart_req'] = sabnzbd.RESTART_REQ
-
-        conf['have_ssl_context'] = sabnzbd.HAVE_SSL_CONTEXT
-        conf['have_cryptography'] = bool(sabnzbd.HAVE_CRYPTOGRAPHY)
+        conf['certificate_validation'] = sabnzbd.CERTIFICATE_VALIDATION
 
         wlist = []
         interfaces = globber_full(sabnzbd.DIR_INTERFACES)
         for k in interfaces:
-            if k.endswith(DEF_STDINTF):
-                interfaces.remove(k)
-                interfaces.insert(0, k)
-                break
-        for k in interfaces:
             if k.endswith(DEF_STDCONFIG):
                 interfaces.remove(k)
-                break
+                continue
+
         for web in interfaces:
             rweb = os.path.basename(web)
-            if os.access(web + '/' + DEF_MAIN_TMPL, os.R_OK):
+            if os.access(os.path.join(web, DEF_MAIN_TMPL), os.R_OK):
                 cols = ListColors(rweb)
                 if cols:
                     for col in cols:
@@ -1518,34 +1407,24 @@ class ConfigGeneral(object):
         conf['bandwidth_perc'] = cfg.bandwidth_perc()
         conf['nzb_key'] = cfg.nzb_key()
         conf['local_ranges'] = cfg.local_ranges.get_string()
-        conf['my_lcldata'] = cfg.admin_dir.get_path()
+        conf['my_lcldata'] = cfg.admin_dir.get_clipped_path()
         conf['caller_url'] = cherrypy.request.base + cfg.url_base()
 
         template = Template(file=os.path.join(sabnzbd.WEB_DIR_CONFIG, 'config_general.tmpl'),
-                            filter=FILTER, searchList=[conf], compilerSettings=DIRECTIVES)
+                            searchList=[conf], compilerSettings=CHEETAH_DIRECTIVES)
         return template.respond()
 
-    @cherrypy.expose
+    @secured_expose(check_session_key=True, check_configlock=True)
     def saveGeneral(self, **kwargs):
-        msg = check_session(kwargs)
-        if msg:
-            return msg
-
         # Handle general options
         for kw in GENERAL_LIST:
             item = config.get_config('misc', kw)
-            value = platform_encode(kwargs.get(kw))
+            value = kwargs.get(kw)
             msg = item.set(value)
             if msg:
                 return badParameterResponse(msg)
 
         # Handle special options
-        language = kwargs.get('language')
-        if language and language != cfg.language():
-            cfg.language.set(language)
-            set_language(language)
-            sabnzbd.api.clear_trans_cache()
-
         cfg.password.set(kwargs.get('password'))
 
         web_dir = kwargs.get('web_dir')
@@ -1583,30 +1462,24 @@ def change_web_dir(web_dir):
     web_dir_path = real_path(sabnzbd.DIR_INTERFACES, web_dir)
 
     if not os.path.exists(web_dir_path):
-        return badParameterResponse('Cannot find web template: %s' % unicoder(web_dir_path))
+        return badParameterResponse('Cannot find web template: %s' % web_dir_path)
     else:
         cfg.web_dir.set(web_dir)
         cfg.web_color.set(web_color)
 
 
 ##############################################################################
-class ConfigServer(object):
+class ConfigServer:
 
     def __init__(self, root):
         self.__root = root
 
-    @cherrypy.expose
+    @secured_expose(check_configlock=True)
     def index(self, **kwargs):
-        if cfg.configlock() or not check_access():
-            return Protected()
-        if not check_login():
-            raise NeedLogin()
-
         conf = build_header(sabnzbd.WEB_DIR_CONFIG)
-
         new = []
         servers = config.get_servers()
-        server_names = sorted(servers.keys(), key=lambda svr: '%d%02d%s' % (int(not servers[svr].enable()), servers[svr].priority(), servers[svr].displayname().lower()))
+        server_names = sorted(list(servers.keys()), key=lambda svr: '%d%02d%s' % (int(not servers[svr].enable()), servers[svr].priority(), servers[svr].displayname().lower()))
         for svr in server_names:
             new.append(servers[svr].get_dict(safe=True))
             t, m, w, d, timeline = BPSMeter.do.amounts(svr)
@@ -1614,49 +1487,40 @@ class ConfigServer(object):
                 new[-1]['amounts'] = to_units(t), to_units(m), to_units(w), to_units(d), timeline
         conf['servers'] = new
         conf['cats'] = list_cats(default=True)
-        conf['have_ssl_context'] = sabnzbd.HAVE_SSL_CONTEXT
+        conf['certificate_validation'] = sabnzbd.CERTIFICATE_VALIDATION
 
         template = Template(file=os.path.join(sabnzbd.WEB_DIR_CONFIG, 'config_server.tmpl'),
-                            filter=FILTER, searchList=[conf], compilerSettings=DIRECTIVES)
+                            searchList=[conf], compilerSettings=CHEETAH_DIRECTIVES)
         return template.respond()
 
-    @cherrypy.expose
+    @secured_expose(check_session_key=True, check_configlock=True)
     def addServer(self, **kwargs):
         return handle_server(kwargs, self.__root, True)
 
-    @cherrypy.expose
+    @secured_expose(check_session_key=True, check_configlock=True)
     def saveServer(self, **kwargs):
         return handle_server(kwargs, self.__root)
 
-    @cherrypy.expose
+    @secured_expose(check_session_key=True, check_configlock=True)
     def testServer(self, **kwargs):
         return handle_server_test(kwargs, self.__root)
 
-    @cherrypy.expose
+    @secured_expose(check_session_key=True, check_configlock=True)
     def delServer(self, **kwargs):
-        msg = check_session(kwargs)
-        if msg:
-            return msg
         kwargs['section'] = 'servers'
         kwargs['keyword'] = kwargs.get('server')
         del_from_section(kwargs)
         raise Raiser(self.__root)
 
-    @cherrypy.expose
+    @secured_expose(check_session_key=True, check_configlock=True)
     def clrServer(self, **kwargs):
-        msg = check_session(kwargs)
-        if msg:
-            return msg
         server = kwargs.get('server')
         if server:
             BPSMeter.do.clear_server(server)
         raise Raiser(self.__root)
 
-    @cherrypy.expose
+    @secured_expose(check_session_key=True, check_configlock=True)
     def toggleServer(self, **kwargs):
-        msg = check_session(kwargs)
-        if msg:
-            return msg
         server = kwargs.get('server')
         if server:
             svr = config.get_config('servers', server)
@@ -1682,12 +1546,19 @@ def unique_svr_name(server):
     return new_name
 
 
+def check_server(host, port, ajax):
+    """ Check if server address resolves properly """
+    if host.lower() == 'localhost' and sabnzbd.AMBI_LOCALHOST:
+        return badParameterResponse(T('Warning: LOCALHOST is ambiguous, use numerical IP-address.'), ajax)
+
+    if GetServerParms(host, int_conv(port)):
+        return ""
+    else:
+        return badParameterResponse(T('Server address "%s:%s" is not valid.') % (host, port), ajax)
+
+
 def handle_server(kwargs, root=None, new_svr=False):
     """ Internal server handler """
-    msg = check_session(kwargs)
-    if msg:
-        return msg
-
     ajax = kwargs.get('ajax')
     host = kwargs.get('host', '').strip()
     if not host:
@@ -1748,7 +1619,7 @@ def handle_server_test(kwargs, root):
 
 
 ##############################################################################
-class ConfigRss(object):
+class ConfigRss:
 
     def __init__(self, root):
         self.__root = root
@@ -1760,13 +1631,8 @@ class ConfigRss(object):
         self.__show_eval_button = False     # True if the "Apply filers" button should be shown
         self.__last_msg = ''                # Last error message from RSS reader
 
-    @cherrypy.expose
+    @secured_expose(check_configlock=True)
     def index(self, **kwargs):
-        if cfg.configlock() or not check_access():
-            return Protected()
-        if not check_login():
-            raise NeedLogin()
-
         conf = build_header(sabnzbd.WEB_DIR_CONFIG)
 
         conf['scripts'] = list_scripts(default=True)
@@ -1788,14 +1654,14 @@ class ConfigRss(object):
 
             rss[feed]['pick_cat'] = pick_cat
             rss[feed]['pick_script'] = pick_script
-            rss[feed]['link'] = urllib.quote_plus(feed.encode('utf-8'))
+            rss[feed]['link'] = urllib.parse.quote_plus(feed.encode('utf-8'))
             rss[feed]['baselink'] = [get_base_url(uri) for uri in rss[feed]['uri']]
             rss[feed]['uris'] = feeds[feed].uri.get_string()
 
         active_feed = kwargs.get('feed', '')
         conf['active_feed'] = active_feed
         conf['rss'] = rss
-        conf['rss_next'] = time.strftime(time_format('%H:%M'), time.localtime(sabnzbd.rss.next_run())).decode(codepage)
+        conf['rss_next'] = time.strftime(time_format('%H:%M'), time.localtime(sabnzbd.rss.next_run()))
 
         if active_feed:
             readout = bool(self.__refresh_readout)
@@ -1831,28 +1697,22 @@ class ConfigRss(object):
         conf['feed'] = txt + str(unum)
 
         template = Template(file=os.path.join(sabnzbd.WEB_DIR_CONFIG, 'config_rss.tmpl'),
-                            filter=FILTER, searchList=[conf], compilerSettings=DIRECTIVES)
+                            searchList=[conf], compilerSettings=CHEETAH_DIRECTIVES)
         return template.respond()
 
-    @cherrypy.expose
+    @secured_expose(check_session_key=True, check_configlock=True)
     def save_rss_rate(self, **kwargs):
         """ Save changed RSS automatic readout rate """
-        msg = check_session(kwargs)
-        if msg:
-            return msg
         cfg.rss_rate.set(kwargs.get('rss_rate'))
         config.save_config()
         scheduler.restart()
         raise rssRaiser(self.__root, kwargs)
 
-    @cherrypy.expose
+    @secured_expose(check_session_key=True, check_configlock=True)
     def upd_rss_feed(self, **kwargs):
         """ Update Feed level attributes,
             legacy version: ignores 'enable' parameter
         """
-        msg = check_session(kwargs)
-        if msg:
-            return msg
         if kwargs.get('enable') is not None:
             del kwargs['enable']
         try:
@@ -1869,12 +1729,9 @@ class ConfigRss(object):
         self.__show_eval_button = True
         raise rssRaiser(self.__root, kwargs)
 
-    @cherrypy.expose
+    @secured_expose(check_session_key=True, check_configlock=True)
     def save_rss_feed(self, **kwargs):
         """ Update Feed level attributes """
-        msg = check_session(kwargs)
-        if msg:
-            return msg
         try:
             cf = config.get_rss()[kwargs.get('feed')]
         except KeyError:
@@ -1889,12 +1746,9 @@ class ConfigRss(object):
 
         raise rssRaiser(self.__root, kwargs)
 
-    @cherrypy.expose
+    @secured_expose(check_session_key=True, check_configlock=True)
     def toggle_rss_feed(self, **kwargs):
         """ Toggle automatic read-out flag of Feed """
-        msg = check_session(kwargs)
-        if msg:
-            return msg
         try:
             item = config.get_rss()[kwargs.get('feed')]
         except KeyError:
@@ -1907,12 +1761,9 @@ class ConfigRss(object):
         else:
             raise rssRaiser(self.__root, kwargs)
 
-    @cherrypy.expose
+    @secured_expose(check_session_key=True, check_configlock=True)
     def add_rss_feed(self, **kwargs):
         """ Add one new RSS feed definition """
-        msg = check_session(kwargs)
-        if msg:
-            return msg
         feed = Strip(kwargs.get('feed')).strip('[]')
         uri = Strip(kwargs.get('uri'))
         if feed and uri:
@@ -1939,14 +1790,15 @@ class ConfigRss(object):
         else:
             raise Raiser(self.__root)
 
-    @cherrypy.expose
+    @secured_expose(check_session_key=True, check_configlock=True)
     def upd_rss_filter(self, **kwargs):
+        """ Wrapper, so we can call from api.py """
+        self.internal_upd_rss_filter(**kwargs)
+
+    def internal_upd_rss_filter(self, **kwargs):
         """ Save updated filter definition """
-        msg = check_session(kwargs)
-        if msg:
-            return msg
         try:
-            cfg = config.get_rss()[kwargs.get('feed')]
+            feed_cfg = config.get_rss()[kwargs.get('feed')]
         except KeyError:
             raise rssRaiser(self.__root, kwargs)
 
@@ -1960,55 +1812,50 @@ class ConfigRss(object):
         enabled = kwargs.get('enabled', '0')
 
         if filt:
-            cfg.filters.update(int(kwargs.get('index', 0)), (cat, pp, script, kwargs.get('filter_type'),
-                                                             platform_encode(filt), prio, enabled))
+            feed_cfg.filters.update(int(kwargs.get('index', 0)), (cat, pp, script, kwargs.get('filter_type'),
+                                                             filt, prio, enabled))
 
             # Move filter if requested
             index = int_conv(kwargs.get('index', ''))
             new_index = kwargs.get('new_index', '')
             if new_index and int_conv(new_index) != index:
-                cfg.filters.move(int(index), int_conv(new_index))
+                feed_cfg.filters.move(int(index), int_conv(new_index))
 
             config.save_config()
         self.__evaluate = False
         self.__show_eval_button = True
         raise rssRaiser(self.__root, kwargs)
 
-    @cherrypy.expose
+    @secured_expose(check_session_key=True, check_configlock=True)
     def del_rss_feed(self, *args, **kwargs):
         """ Remove complete RSS feed """
-        msg = check_session(kwargs)
-        if msg:
-            return msg
         kwargs['section'] = 'rss'
         kwargs['keyword'] = kwargs.get('feed')
         del_from_section(kwargs)
         sabnzbd.rss.clear_feed(kwargs.get('feed'))
         raise Raiser(self.__root)
 
-    @cherrypy.expose
+    @secured_expose(check_session_key=True, check_configlock=True)
     def del_rss_filter(self, **kwargs):
+        """ Wrapper, so we can call from api.py """
+        self.internal_del_rss_filter(**kwargs)
+
+    def internal_del_rss_filter(self, **kwargs):
         """ Remove one RSS filter """
-        msg = check_session(kwargs)
-        if msg:
-            return msg
         try:
-            cfg = config.get_rss()[kwargs.get('feed')]
+            feed_cfg = config.get_rss()[kwargs.get('feed')]
         except KeyError:
             raise rssRaiser(self.__root, kwargs)
 
-        cfg.filters.delete(int(kwargs.get('index', 0)))
+        feed_cfg.filters.delete(int(kwargs.get('index', 0)))
         config.save_config()
         self.__evaluate = False
         self.__show_eval_button = True
         raise rssRaiser(self.__root, kwargs)
 
-    @cherrypy.expose
+    @secured_expose(check_session_key=True, check_configlock=True)
     def download_rss_feed(self, *args, **kwargs):
         """ Force download of all matching jobs in a feed """
-        msg = check_session(kwargs)
-        if msg:
-            return msg
         if 'feed' in kwargs:
             feed = kwargs['feed']
             self.__refresh_readout = feed
@@ -2018,22 +1865,16 @@ class ConfigRss(object):
             self.__evaluate = True
         raise rssRaiser(self.__root, kwargs)
 
-    @cherrypy.expose
+    @secured_expose(check_session_key=True, check_configlock=True)
     def clean_rss_jobs(self, *args, **kwargs):
         """ Remove processed RSS jobs from UI """
-        msg = check_session(kwargs)
-        if msg:
-            return msg
         sabnzbd.rss.clear_downloaded(kwargs['feed'])
         self.__evaluate = True
         raise rssRaiser(self.__root, kwargs)
 
-    @cherrypy.expose
+    @secured_expose(check_session_key=True, check_configlock=True)
     def test_rss_feed(self, *args, **kwargs):
         """ Read the feed content again and show results """
-        msg = check_session(kwargs)
-        if msg:
-            return msg
         if 'feed' in kwargs:
             feed = kwargs['feed']
             self.__refresh_readout = feed
@@ -2044,12 +1885,9 @@ class ConfigRss(object):
             self.__show_eval_button = False
         raise rssRaiser(self.__root, kwargs)
 
-    @cherrypy.expose
+    @secured_expose(check_session_key=True, check_configlock=True)
     def eval_rss_feed(self, *args, **kwargs):
         """ Re-apply the filters to the feed """
-        msg = check_session(kwargs)
-        if msg:
-            return msg
         if 'feed' in kwargs:
             self.__refresh_download = False
             self.__refresh_force = False
@@ -2059,12 +1897,9 @@ class ConfigRss(object):
 
         raise rssRaiser(self.__root, kwargs)
 
-    @cherrypy.expose
+    @secured_expose(check_session_key=True, check_configlock=True)
     def download(self, **kwargs):
         """ Download NZB from provider (Download button) """
-        msg = check_session(kwargs)
-        if msg:
-            return msg
         feed = kwargs.get('feed')
         url = kwargs.get('url')
         nzbname = kwargs.get('nzbname')
@@ -2081,14 +1916,33 @@ class ConfigRss(object):
             sabnzbd.rss.flag_downloaded(feed, url)
         raise rssRaiser(self.__root, kwargs)
 
-    @cherrypy.expose
+    @secured_expose(check_session_key=True, check_configlock=True)
     def rss_now(self, *args, **kwargs):
         """ Run an automatic RSS run now """
-        msg = check_session(kwargs)
-        if msg:
-            return msg
         scheduler.force_rss()
         raise rssRaiser(self.__root, kwargs)
+
+
+def ConvertSpecials(p):
+    """ Convert None to 'None' and 'Default' to '' """
+    if p is None:
+        p = 'None'
+    elif p.lower() == T('Default').lower():
+        p = ''
+    return p
+
+
+def IsNone(value):
+    """ Return True if either None, 'None' or '' """
+    return value is None or value == "" or value.lower() == 'none'
+
+
+def Strip(txt):
+    """ Return stripped string, can handle None """
+    try:
+        return txt.strip()
+    except:
+        return None
 
 
 ##############################################################################
@@ -2100,29 +1954,17 @@ _SCHED_ACTIONS = ('resume', 'pause', 'pause_all', 'shutdown', 'restart', 'speedl
                   )
 
 
-class ConfigScheduling(object):
+class ConfigScheduling:
 
     def __init__(self, root):
         self.__root = root
 
-    @cherrypy.expose
+    @secured_expose(check_configlock=True)
     def index(self, **kwargs):
         def get_days():
-            days = {}
-            days["*"] = T('Daily')
-            days["1"] = T('Monday')
-            days["2"] = T('Tuesday')
-            days["3"] = T('Wednesday')
-            days["4"] = T('Thursday')
-            days["5"] = T('Friday')
-            days["6"] = T('Saturday')
-            days["7"] = T('Sunday')
+            days = {"*": T('Daily'), "1": T('Monday'), "2": T('Tuesday'), "3": T('Wednesday'), "4": T('Thursday'),
+                    "5": T('Friday'), "6": T('Saturday'), "7": T('Sunday')}
             return days
-
-        if cfg.configlock() or not check_access():
-            return Protected()
-        if not check_login():
-            raise NeedLogin()
 
         conf = build_header(sabnzbd.WEB_DIR_CONFIG)
 
@@ -2150,7 +1992,7 @@ class ConfigScheduling(object):
                 if '%' not in value and from_units(value) < 1.0:
                     value = T('off')  # : "Off" value for speedlimit in scheduler
                 else:
-                    if '%' not in value and int_conv(value) > 1 and int_conv(value) < 101:
+                    if '%' not in value and 1 < int_conv(value) < 101:
                         value += '%'
                     value = value.upper()
             if action in actions:
@@ -2199,17 +2041,12 @@ class ConfigScheduling(object):
         conf['categories'] = categories
 
         template = Template(file=os.path.join(sabnzbd.WEB_DIR_CONFIG, 'config_scheduling.tmpl'),
-                            filter=FILTER, searchList=[conf], compilerSettings=DIRECTIVES)
+                            searchList=[conf], compilerSettings=CHEETAH_DIRECTIVES)
         return template.respond()
 
-    @cherrypy.expose
+    @secured_expose(check_session_key=True, check_configlock=True)
     def addSchedule(self, **kwargs):
-        msg = check_session(kwargs)
-        if msg:
-            return msg
-
         servers = config.get_servers()
-        categories = list_cats(False)
         minute = kwargs.get('minute')
         hour = kwargs.get('hour')
         days_of_week = ''.join([str(x) for x in kwargs.get('daysofweek', '')])
@@ -2255,12 +2092,8 @@ class ConfigScheduling(object):
         scheduler.restart(force=True)
         raise Raiser(self.__root)
 
-    @cherrypy.expose
+    @secured_expose(check_session_key=True, check_configlock=True)
     def delSchedule(self, **kwargs):
-        msg = check_session(kwargs)
-        if msg:
-            return msg
-
         schedules = cfg.schedules()
         line = kwargs.get('line')
         if line and line in schedules:
@@ -2270,12 +2103,8 @@ class ConfigScheduling(object):
             scheduler.restart(force=True)
         raise Raiser(self.__root)
 
-    @cherrypy.expose
+    @secured_expose(check_session_key=True, check_configlock=True)
     def toggleSchedule(self, **kwargs):
-        msg = check_session(kwargs)
-        if msg:
-            return msg
-
         schedules = cfg.schedules()
         line = kwargs.get('line')
         if line:
@@ -2293,22 +2122,17 @@ class ConfigScheduling(object):
 
 
 ##############################################################################
-class ConfigCats(object):
+class ConfigCats:
 
     def __init__(self, root):
         self.__root = root
 
-    @cherrypy.expose
+    @secured_expose(check_configlock=True)
     def index(self, **kwargs):
-        if cfg.configlock() or not check_access():
-            return Protected()
-        if not check_login():
-            raise NeedLogin()
-
         conf = build_header(sabnzbd.WEB_DIR_CONFIG)
 
         conf['scripts'] = list_scripts(default=True)
-        conf['defdir'] = cfg.complete_dir.get_path()
+        conf['defdir'] = cfg.complete_dir.get_clipped_path()
 
         categories = config.get_ordered_categories()
         conf['have_cats'] = len(categories) > 1
@@ -2324,37 +2148,32 @@ class ConfigCats(object):
         conf['slotinfo'] = slotinfo
 
         template = Template(file=os.path.join(sabnzbd.WEB_DIR_CONFIG, 'config_cat.tmpl'),
-                            filter=FILTER, searchList=[conf], compilerSettings=DIRECTIVES)
+                            searchList=[conf], compilerSettings=CHEETAH_DIRECTIVES)
         return template.respond()
 
-    @cherrypy.expose
+    @secured_expose(check_session_key=True, check_configlock=True)
     def delete(self, **kwargs):
-        msg = check_session(kwargs)
-        if msg:
-            return msg
         kwargs['section'] = 'categories'
         kwargs['keyword'] = kwargs.get('name')
         del_from_section(kwargs)
         raise Raiser(self.__root)
 
-    @cherrypy.expose
+    @secured_expose(check_session_key=True, check_configlock=True)
     def save(self, **kwargs):
-        msg = check_session(kwargs)
-        if msg:
-            return msg
-
         name = kwargs.get('name', '*')
         if name == '*':
             newname = name
         else:
             newname = re.sub('"', '', kwargs.get('newname', ''))
         if newname:
+            # Check if this cat-dir is not sub-folder of incomplete
+            if same_file(cfg.download_dir.get_path(), real_path(cfg.complete_dir.get_path(), kwargs['dir'])):
+                return T('Category folder cannot be a subfolder of the Temporary Download Folder.')
+
+            # Delete current one and replace with new one
             if name:
                 config.delete('categories', name)
-            name = newname.lower()
-            if kwargs.get('dir'):
-                kwargs['dir'] = platform_encode(kwargs['dir'])
-            config.ConfigCat(name, kwargs)
+            config.ConfigCat(newname.lower(), kwargs)
 
         config.save_config()
         raise Raiser(self.__root)
@@ -2368,35 +2187,26 @@ SORT_LIST = (
 )
 
 
-class ConfigSorting(object):
+class ConfigSorting:
 
     def __init__(self, root):
         self.__root = root
 
-    @cherrypy.expose
+    @secured_expose(check_configlock=True)
     def index(self, **kwargs):
-        if cfg.configlock() or not check_access():
-            return Protected()
-        if not check_login():
-            raise NeedLogin()
-
         conf = build_header(sabnzbd.WEB_DIR_CONFIG)
-        conf['complete_dir'] = cfg.complete_dir.get_path()
+        conf['complete_dir'] = cfg.complete_dir.get_clipped_path()
 
         for kw in SORT_LIST:
             conf[kw] = config.get_config('misc', kw)()
         conf['categories'] = list_cats(False)
 
         template = Template(file=os.path.join(sabnzbd.WEB_DIR_CONFIG, 'config_sorting.tmpl'),
-                            filter=FILTER, searchList=[conf], compilerSettings=DIRECTIVES)
+                            searchList=[conf], compilerSettings=CHEETAH_DIRECTIVES)
         return template.respond()
 
-    @cherrypy.expose
+    @secured_expose(check_session_key=True, check_configlock=True)
     def saveSorting(self, **kwargs):
-        msg = check_session(kwargs)
-        if msg:
-            return msg
-
         try:
             kwargs['movie_categories'] = kwargs['movie_cat']
         except:
@@ -2422,86 +2232,68 @@ class ConfigSorting(object):
 
 
 ##############################################################################
-LOG_API_RE = re.compile(r"(apikey|api)(=|:)[\w]+", re.I)
-LOG_API_JSON_RE = re.compile(r"u'(apikey|api)': u'[\w]+'", re.I)
-LOG_USER_RE = re.compile(r"(user|username)\s?=\s?[\S]+", re.I)
-LOG_PASS_RE = re.compile(r"(password)\s?=\s?[\S]+", re.I)
-LOG_INI_HIDE_RE = re.compile(r"(email_pwd|email_account|email_to|rating_api_key|pushover_token|pushover_userkey|pushbullet_apikey|prowl_apikey|growl_password|growl_server|IPv[4|6] address)\s?=\s?[\S]+", re.I)
-LOG_HASH_RE = re.compile(r"([a-fA-F\d]{25})", re.I)
+LOG_API_RE = re.compile(b"(apikey|api)(=|:)[\w]+", re.I)
+LOG_API_JSON_RE = re.compile(b"'(apikey|api)': '[\w]+'", re.I)
+LOG_USER_RE = re.compile(b"(user|username)\s?=\s?[\S]+", re.I)
+LOG_PASS_RE = re.compile(b"(password)\s?=\s?[\S]+", re.I)
+LOG_INI_HIDE_RE = re.compile(b"(email_pwd|email_account|email_to|rating_api_key|pushover_token|pushover_userkey|pushbullet_apikey|prowl_apikey|growl_password|growl_server|IPv[4|6] address)\s?=\s?[\S]+", re.I)
+LOG_HASH_RE = re.compile(b"([a-fA-F\d]{25})", re.I)
 
-class Status(object):
+class Status:
 
     def __init__(self, root):
         self.__root = root
 
-    @cherrypy.expose
+    @secured_expose(check_configlock=True)
     def index(self, **kwargs):
-        if not check_access():
-            return Protected()
-        if not check_login():
-            raise NeedLogin()
-
         header = build_status(skip_dashboard=kwargs.get('skip_dashboard'))
-
         template = Template(file=os.path.join(sabnzbd.WEB_DIR, 'status.tmpl'),
-                            filter=FILTER, searchList=[header], compilerSettings=DIRECTIVES)
+                            searchList=[header], compilerSettings=CHEETAH_DIRECTIVES)
         return template.respond()
 
-    @cherrypy.expose
+    @secured_expose(check_session_key=True)
     def reset_quota(self, **kwargs):
-        msg = check_session(kwargs)
-        if msg:
-            return msg
         BPSMeter.do.reset_quota(force=True)
         raise Raiser(self.__root)
 
-    @cherrypy.expose
+    @secured_expose(check_session_key=True)
     def disconnect(self, **kwargs):
-        msg = check_session(kwargs)
-        if msg:
-            return msg
         Downloader.do.disconnect()
         raise Raiser(self.__root)
 
-    @cherrypy.expose
+    @secured_expose(check_session_key=True)
     def refresh_conn(self, **kwargs):
-        msg = check_session(kwargs)
-        if msg:
-            return msg
         # No real action, just reload the page
         raise Raiser(self.__root)
 
-    @cherrypy.expose
+    @secured_expose(check_session_key=True)
     def showlog(self, **kwargs):
-        msg = check_session(kwargs)
-        if msg:
-            return msg
         try:
             sabnzbd.LOGHANDLER.flush()
         except:
             pass
 
         # Fetch the INI and the log-data and add a message at the top
-        log_data  = '--------------------------------\n\n'
-        log_data += 'The log includes a copy of your sabnzbd.ini with\nall usernames, passwords and API-keys removed.'
-        log_data += '\n\n--------------------------------\n'
-        log_data += open(sabnzbd.LOGFILE, "r").read()
-        log_data += open(config.get_filename(), 'r').read()
+        log_data  = b'--------------------------------\n\n'
+        log_data += b'The log includes a copy of your sabnzbd.ini with\nall usernames, passwords and API-keys removed.'
+        log_data += b'\n\n--------------------------------\n'
+        log_data += open(sabnzbd.LOGFILE, "rb").read()
+        log_data += open(config.get_filename(), 'rb').read()
 
         # We need to remove all passwords/usernames/api-keys
-        log_data = LOG_API_RE.sub("apikey=<APIKEY>", log_data)
-        log_data = LOG_API_JSON_RE.sub("'apikey':<APIKEY>'", log_data)
-        log_data = LOG_USER_RE.sub(r'\g<1>=<USER>', log_data)
-        log_data = LOG_PASS_RE.sub("password=<PASSWORD>", log_data)
-        log_data = LOG_INI_HIDE_RE.sub(r"\1 = <REMOVED>", log_data)
-        log_data = LOG_HASH_RE.sub("<HASH>", log_data)
+        log_data = LOG_API_RE.sub(b"apikey=<APIKEY>", log_data)
+        log_data = LOG_API_JSON_RE.sub(b"'apikey':<APIKEY>'", log_data)
+        log_data = LOG_USER_RE.sub(b'\g<1>=<USER>', log_data)
+        log_data = LOG_PASS_RE.sub(b"password=<PASSWORD>", log_data)
+        log_data = LOG_INI_HIDE_RE.sub(b"\\1 = <REMOVED>", log_data)
+        log_data = LOG_HASH_RE.sub(b"<HASH>", log_data)
 
         # Try to replace the username
         try:
             import getpass
             cur_user = getpass.getuser()
             if cur_user:
-                log_data = log_data.replace(cur_user, '<USERNAME>')
+                log_data = log_data.replace(utob(cur_user), b'<USERNAME>')
         except:
             pass
         # Set headers
@@ -2509,91 +2301,103 @@ class Status(object):
         cherrypy.response.headers['Content-Disposition'] = 'attachment;filename="sabnzbd.log"'
         return log_data
 
-    @cherrypy.expose
+    @secured_expose(check_session_key=True)
     def clearwarnings(self, **kwargs):
-        msg = check_session(kwargs)
-        if msg:
-            return msg
         sabnzbd.GUIHANDLER.clear()
         raise Raiser(self.__root)
 
-    @cherrypy.expose
+    @secured_expose(check_session_key=True)
     def change_loglevel(self, **kwargs):
-        msg = check_session(kwargs)
-        if msg:
-            return msg
         cfg.log_level.set(kwargs.get('loglevel'))
         config.save_config()
 
         raise Raiser(self.__root)
 
-    @cherrypy.expose
+    @secured_expose(check_session_key=True)
     def unblock_server(self, **kwargs):
-        msg = check_session(kwargs)
-        if msg:
-            return msg
         Downloader.do.unblock(kwargs.get('server'))
         # Short sleep so that UI shows new server status
         time.sleep(1.0)
         raise Raiser(self.__root)
 
-    @cherrypy.expose
+    @secured_expose(check_session_key=True)
     def delete(self, **kwargs):
-        msg = check_session(kwargs)
-        if msg:
-            return msg
         orphan_delete(kwargs)
         raise Raiser(self.__root)
 
-    @cherrypy.expose
+    @secured_expose(check_session_key=True)
     def delete_all(self, **kwargs):
-        msg = check_session(kwargs)
-        if msg:
-            return msg
         orphan_delete_all()
         raise Raiser(self.__root)
 
-    @cherrypy.expose
+    @secured_expose(check_session_key=True)
     def add(self, **kwargs):
-        msg = check_session(kwargs)
-        if msg:
-            return msg
         orphan_add(kwargs)
         raise Raiser(self.__root)
 
-    @cherrypy.expose
+    @secured_expose(check_session_key=True)
     def add_all(self, **kwargs):
-        msg = check_session(kwargs)
-        if msg:
-            return msg
         orphan_add_all()
         raise Raiser(self.__root)
 
-    @cherrypy.expose
+    @secured_expose(check_session_key=True)
     def dashrefresh(self, **kwargs):
         # This function is run when Refresh button on Dashboard is clicked
         # Put the time consuming dashboard functions here; they only get executed when the user clicks the Refresh button
-        msg = check_session(kwargs)
-        if msg:
-            return msg
 
         # PyStone
         sabnzbd.PYSTONE_SCORE = getpystone()
 
-        # Diskspeed
-        sabnzbd.DOWNLOAD_DIR_SPEED = round(diskspeedmeasure(sabnzbd.cfg.download_dir.get_path()), 1)
+        # Diskspeed of download (aka incomplete) directory:
+        dir_speed = diskspeedmeasure(sabnzbd.cfg.download_dir.get_path())
+        if dir_speed:
+            sabnzbd.DOWNLOAD_DIR_SPEED = round(dir_speed, 1)
+        else:
+            sabnzbd.DOWNLOAD_DIR_SPEED = 0
+
         time.sleep(1.0)
-        sabnzbd.COMPLETE_DIR_SPEED = round(diskspeedmeasure(sabnzbd.cfg.complete_dir.get_path()), 1)
+        # Diskspeed of complete directory:
+        dir_speed = diskspeedmeasure(sabnzbd.cfg.complete_dir.get_path())
+        if dir_speed:
+            sabnzbd.COMPLETE_DIR_SPEED = round(dir_speed, 1)
+        else:
+            sabnzbd.COMPLETE_DIR_SPEED = 0
+
+        # Internet bandwidth
+        sabnzbd.INTERNET_BANDWIDTH = round(internetspeed(), 1)
 
         raise Raiser(self.__root)  # Refresh screen
 
 
-def Protected():
-    cherrypy.response.status = 403
-    return 'Access denied'
+def orphan_delete(kwargs):
+    path = kwargs.get('name')
+    if path:
+        path = os.path.join(long_path(cfg.download_dir.get_path()), path)
+        logging.info('Removing orphaned job %s', path)
+        remove_all(path, recursive=True)
 
-def NeedLogin():
-    raise Raiser('/login/')
+
+def orphan_delete_all():
+    paths = NzbQueue.do.scan_jobs(all=False, action=False)
+    for path in paths:
+        kwargs = {'name': path}
+        orphan_delete(kwargs)
+
+
+def orphan_add(kwargs):
+    path = kwargs.get('name')
+    if path:
+        path = os.path.join(long_path(cfg.download_dir.get_path()), path)
+        logging.info('Re-adding orphaned job %s', path)
+        NzbQueue.do.repair_job(path, None, None)
+
+
+def orphan_add_all():
+    paths = NzbQueue.do.scan_jobs(all=False, action=False)
+    for path in paths:
+        kwargs = {'name': path}
+        orphan_add(kwargs)
+
 
 def badParameterResponse(msg, ajax=None):
     """ Return a html page with error message and a 'back' button """
@@ -2613,16 +2417,11 @@ def badParameterResponse(msg, ajax=None):
 <FORM><INPUT TYPE="BUTTON" VALUE="%s" ONCLICK="history.go(-1)"></FORM>
 </body>
 </html>
-''' % (sabnzbd.__version__, T('ERROR:'), T('Incorrect parameter'), unicoder(msg), T('Back'))
+''' % (sabnzbd.__version__, T('ERROR:'), T('Incorrect parameter'), msg, T('Back'))
 
 
-def ShowString(name, string):
+def ShowString(name, msg):
     """ Return a html page listing a file and a 'back' button """
-    try:
-        msg = TRANS(string)
-    except:
-        msg = "Encoding Error\n"
-
     return '''
 <!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.0//EN">
 <html>
@@ -2635,7 +2434,7 @@ def ShowString(name, string):
            <code><pre>%s</pre></code>
 </body>
 </html>
-''' % (xml_name(name), T('Back'), xml_name(name), escape(unicoder(msg)))
+''' % (xml_name(name), T('Back'), xml_name(name), escape(msg))
 
 
 def GetRssLog(feed):
@@ -2644,11 +2443,12 @@ def GetRssLog(feed):
         job = job.copy()
 
         # Now we apply some formatting
-        job['title'] = xml_name(job['title'])
+        job['title'] = job['title']
         job['skip'] = '*' * int(job.get('status', '').endswith('*'))
         # These fields could be empty
         job['cat'] = job.get('cat', '')
         job['size'] = job.get('size', '')
+        job['infourl'] = job.get('infourl', '')
 
         # Auto-fetched jobs didn't have these fields set
         if job.get('url'):
@@ -2656,10 +2456,10 @@ def GetRssLog(feed):
             if sabnzbd.rss.special_rss_site(job.get('url')):
                 job['nzbname'] = ''
             else:
-                job['nzbname'] = xml_name(job['title'])
+                job['nzbname'] = job['title']
         else:
             job['baselink'] = ''
-            job['nzbname'] = xml_name(job['title'])
+            job['nzbname'] = job['title']
 
         if job.get('size', 0):
             job['size_units'] = to_units(job['size'])
@@ -2676,14 +2476,14 @@ def GetRssLog(feed):
 
         if job.get('time_downloaded'):
             job['time_downloaded_ms'] = time.mktime(job['time_downloaded'])
-            job['time_downloaded'] = time.strftime(time_format('%H:%M %a %d %b'), job['time_downloaded']).decode(codepage)
+            job['time_downloaded'] = time.strftime(time_format('%H:%M %a %d %b'), job['time_downloaded'])
         else:
             job['time_downloaded_ms'] = ''
             job['time_downloaded'] = ''
 
         return job
 
-    jobs = sabnzbd.rss.show_result(feed).values()
+    jobs = list(sabnzbd.rss.show_result(feed).values())
     good, bad, done = ([], [], [])
     for job in jobs:
         if job['status'][0] == 'G':
@@ -2709,7 +2509,7 @@ def GetRssLog(feed):
 LIST_EMAIL = (
     'email_endjob', 'email_cats', 'email_full',
     'email_server', 'email_to', 'email_from',
-    'email_account', 'email_pwd', 'email_dir', 'email_rss'
+    'email_account', 'email_pwd', 'email_rss'
 )
 LIST_GROWL = ('growl_enable', 'growl_cats', 'growl_server', 'growl_password',
               'growl_prio_startup', 'growl_prio_download', 'growl_prio_pp', 'growl_prio_complete', 'growl_prio_failed',
@@ -2745,22 +2545,16 @@ LIST_NSCRIPT = ('nscript_enable', 'nscript_cats', 'nscript_script', 'nscript_par
                 'nscript_prio_new_login')
 
 
-class ConfigNotify(object):
+class ConfigNotify:
 
     def __init__(self, root):
         self.__root = root
         self.__lastmail = None
 
-    @cherrypy.expose
+    @secured_expose(check_configlock=True)
     def index(self, **kwargs):
-        if cfg.configlock() or not check_access():
-            return Protected()
-        if not check_login():
-            raise NeedLogin()
-
         conf = build_header(sabnzbd.WEB_DIR_CONFIG)
 
-        conf['my_home'] = sabnzbd.DIR_HOME
         conf['categories'] = list_cats(False)
         conf['lastmail'] = self.__lastmail
         conf['have_growl'] = True
@@ -2793,52 +2587,49 @@ class ConfigNotify(object):
         conf['notify_texts'] = sabnzbd.notifier.NOTIFICATION
 
         template = Template(file=os.path.join(sabnzbd.WEB_DIR_CONFIG, 'config_notify.tmpl'),
-                            filter=FILTER, searchList=[conf], compilerSettings=DIRECTIVES)
+                            searchList=[conf], compilerSettings=CHEETAH_DIRECTIVES)
         return template.respond()
 
-    @cherrypy.expose
+    @secured_expose(check_session_key=True, check_configlock=True)
     def saveEmail(self, **kwargs):
-        msg = check_session(kwargs)
-        if msg:
-            return msg
         ajax = kwargs.get('ajax')
 
         for kw in LIST_EMAIL:
-            msg = config.get_config('misc', kw).set(platform_encode(kwargs.get(kw)))
+            msg = config.get_config('misc', kw).set(kwargs.get(kw))
             if msg:
-                return badParameterResponse(T('Incorrect value for %s: %s') % (kw, unicoder(msg)), ajax)
+                return badParameterResponse(T('Incorrect value for %s: %s') % (kw, msg), ajax)
         for kw in LIST_GROWL:
-            msg = config.get_config('growl', kw).set(platform_encode(kwargs.get(kw)))
+            msg = config.get_config('growl', kw).set(kwargs.get(kw))
             if msg:
-                return badParameterResponse(T('Incorrect value for %s: %s') % (kw, unicoder(msg)), ajax)
+                return badParameterResponse(T('Incorrect value for %s: %s') % (kw, msg), ajax)
         for kw in LIST_NCENTER:
-            msg = config.get_config('ncenter', kw).set(platform_encode(kwargs.get(kw)))
+            msg = config.get_config('ncenter', kw).set(kwargs.get(kw))
             if msg:
-                return badParameterResponse(T('Incorrect value for %s: %s') % (kw, unicoder(msg)), ajax)
+                return badParameterResponse(T('Incorrect value for %s: %s') % (kw, msg), ajax)
         for kw in LIST_ACENTER:
-            msg = config.get_config('acenter', kw).set(platform_encode(kwargs.get(kw)))
+            msg = config.get_config('acenter', kw).set(kwargs.get(kw))
             if msg:
-                return badParameterResponse(T('Incorrect value for %s: %s') % (kw, unicoder(msg)), ajax)
+                return badParameterResponse(T('Incorrect value for %s: %s') % (kw, msg), ajax)
         for kw in LIST_NTFOSD:
-            msg = config.get_config('ntfosd', kw).set(platform_encode(kwargs.get(kw)))
+            msg = config.get_config('ntfosd', kw).set(kwargs.get(kw))
             if msg:
-                return badParameterResponse(T('Incorrect value for %s: %s') % (kw, unicoder(msg)), ajax)
+                return badParameterResponse(T('Incorrect value for %s: %s') % (kw, msg), ajax)
         for kw in LIST_PROWL:
-            msg = config.get_config('prowl', kw).set(platform_encode(kwargs.get(kw)))
+            msg = config.get_config('prowl', kw).set(kwargs.get(kw))
             if msg:
-                return badParameterResponse(T('Incorrect value for %s: %s') % (kw, unicoder(msg)), ajax)
+                return badParameterResponse(T('Incorrect value for %s: %s') % (kw, msg), ajax)
         for kw in LIST_PUSHOVER:
-            msg = config.get_config('pushover', kw).set(platform_encode(kwargs.get(kw)))
+            msg = config.get_config('pushover', kw).set(kwargs.get(kw))
             if msg:
-                return badParameterResponse(T('Incorrect value for %s: %s') % (kw, unicoder(msg)), ajax)
+                return badParameterResponse(T('Incorrect value for %s: %s') % (kw, msg), ajax)
         for kw in LIST_PUSHBULLET:
-            msg = config.get_config('pushbullet', kw).set(platform_encode(kwargs.get(kw, 0)))
+            msg = config.get_config('pushbullet', kw).set(kwargs.get(kw, 0))
             if msg:
-                return badParameterResponse(T('Incorrect value for %s: %s') % (kw, unicoder(msg)), ajax)
+                return badParameterResponse(T('Incorrect value for %s: %s') % (kw, msg), ajax)
         for kw in LIST_NSCRIPT:
-            msg = config.get_config('nscript', kw).set(platform_encode(kwargs.get(kw, 0)))
+            msg = config.get_config('nscript', kw).set(kwargs.get(kw, 0))
             if msg:
-                return badParameterResponse(T('Incorrect value for %s: %s') % (kw, unicoder(msg)), ajax)
+                return badParameterResponse(T('Incorrect value for %s: %s') % (kw, msg), ajax)
 
         config.save_config()
         self.__lastmail = None
@@ -2846,88 +2637,4 @@ class ConfigNotify(object):
             return sabnzbd.api.report('json')
         else:
             raise Raiser(self.__root)
-
-    @cherrypy.expose
-    def testmail(self, **kwargs):
-        msg = check_session(kwargs)
-        if msg:
-            return msg
-        self.__lastmail = _api_test_email(name=None, output=None, kwargs=None)
-        raise Raiser(self.__root)
-
-    @cherrypy.expose
-    def testnotification(self, **kwargs):
-        msg = check_session(kwargs)
-        if msg:
-            return msg
-        _api_test_notif(name=None, output=None, kwargs=None)
-        raise Raiser(self.__root)
-
-
-def rss_history(url, limit=50, search=None):
-    url = url.replace('rss', '')
-
-    youngest = None
-
-    rss = RSS()
-    rss.channel.title = "SABnzbd History"
-    rss.channel.description = "Overview of completed downloads"
-    rss.channel.link = "https://sabnzbd.org/"
-    rss.channel.language = "en"
-
-    items, _fetched_items, _max_items = build_history(limit=limit, search=search)
-
-    for history in items:
-        item = Item()
-
-        item.pubDate = std_time(history['completed'])
-        item.title = history['name']
-
-        if not youngest:
-            youngest = history['completed']
-        elif history['completed'] < youngest:
-            youngest = history['completed']
-
-        if history['url_info']:
-            item.link = history['url_info']
-        else:
-            item.link = url
-            item.guid = history['nzo_id']
-
-        stageLine = []
-        for stage in history['stage_log']:
-            stageLine.append("<tr><dt>Stage %s</dt>" % stage['name'])
-            actions = []
-            for action in stage['actions']:
-                actions.append("<dd>%s</dd>" % (action))
-            actions.sort()
-            actions.reverse()
-            for act in actions:
-                stageLine.append(act)
-            stageLine.append("</tr>")
-        item.description = ''.join(stageLine)
-        rss.addItem(item)
-
-    rss.channel.lastBuildDate = std_time(youngest)
-    rss.channel.pubDate = std_time(time.time())
-
-    return rss.write()
-
-
-def rss_warnings():
-    """ Return an RSS feed with last warnings/errors """
-    rss = RSS()
-    rss.channel.title = "SABnzbd Warnings"
-    rss.channel.description = "Overview of warnings/errors"
-    rss.channel.link = "https://sabnzbd.org/"
-    rss.channel.language = "en"
-
-    for warn in sabnzbd.GUIHANDLER.content():
-        item = Item()
-        item.title = warn
-        rss.addItem(item)
-
-    rss.channel.lastBuildDate = std_time(time.time())
-    rss.channel.pubDate = rss.channel.lastBuildDate
-    return rss.write()
 

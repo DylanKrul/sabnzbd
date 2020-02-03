@@ -1,6 +1,6 @@
-#!/usr/bin/python -OO
+#!/usr/bin/python3 -OO
 # -*- coding: UTF-8 -*-
-# Copyright 2012-2017 The SABnzbd-Team <team@sabnzbd.org>
+# Copyright 2012-2019 The SABnzbd-Team <team@sabnzbd.org>
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License
@@ -47,16 +47,10 @@ SKIN_TEXT = {
     'post-Propagating'   : TT('Propagation delay'),
     'post-Checking'      : TT('Checking'), #: PP status
 
-    'sch-frequency'      : TT('Frequency'), #:  #: Config->Scheduler
-    'sch-action'         : TT('Action'), #:  #: Config->Scheduler
-    'sch-arguments'      : TT('Arguments'), #:  #: Config->Scheduler
     'sch-task'           : TT('Task'), #:  #: Config->Scheduler
     'sch-disable_server' : TT('disable server'), #:  #: Config->Scheduler
     'sch-enable_server'  : TT('enable server'), #:  #: Config->Scheduler
-    'sch-resume'         : TT('Resume'), #:  #: Config->Scheduler
-    'sch-pause'          : TT('Pause'), #:  #: Config->Scheduler
-    'sch-shutdown'       : TT('Shutdown'), #:  #: Config->Scheduler
-    'sch-restart'        : TT('Restart'), #:  #: Config->Scheduler
+
     'sch-speedlimit'     : TT('Speedlimit'), #:  #: Config->Scheduler
     'sch-pause_all'      : TT('Pause All'), #:  #: Config->Scheduler
     'sch-pause_post'     : TT('Pause post-processing'), #:  #: Config->Scheduler
@@ -153,6 +147,8 @@ SKIN_TEXT = {
 # General template elements
     'signOn' : TT('The automatic usenet download tool'), #: SABnzbd's theme line
     'button-save' : TT('Save'), #: "Save" button
+    'button-saving' : TT('Saving..'),
+    'button-failed' : TT('Failed'),
     'confirm' : TT('Are you sure?'), #: Used in confirmation popups
     'delFiles' : TT('Delete all downloaded files?'),  #: Used in confirmation popups
 
@@ -270,6 +266,7 @@ SKIN_TEXT = {
 
 # Connections page
     'link-forceDisc' : TT('Force Disconnect'), #: Status page button
+    'explain-forceDisc' : TT('Disconnect all active connections to usenet servers. Connections will be reopened after a few seconds if there are items in the queue.'), #: Status page button text
     'askTestEmail' : TT('This will send a test email to your account.'),
     'link-showLog' : TT('Show Logging'), #: Status page button
     'link-testEmail' : TT('Test Email'), #: Status page button
@@ -302,8 +299,11 @@ SKIN_TEXT = {
     'dashboard-completeDirSpeed' : TT('Complete folder speed'),
     'dashboard-writingSpeed' : TT('Writing speed'),
     'dashboard-speedTestFailed' : TT('Could not write. Check that the directory is writable.'),
+    'dashboard-internetBandwidth' : TT('Internet Bandwidth'),
     'dashboard-clickToStart' : TT('Click on Repeat test button below to determine'),
     'dashboard-repeatTest' : TT('Repeat test'),
+    'dashboard-testDownload' : TT('Test download'),
+    'dashboard-testDownload-explain' : TT('Adds a verified test NZB of the specified size, filled with random data. Can be used to verify your setup.'),
 
 # Configuration
     'confgFile' : TT('Config File'),
@@ -317,11 +317,10 @@ SKIN_TEXT = {
     'explain-Repair' : TT('The "Repair" button will restart SABnzbd and do a complete<br />reconstruction of the queue content, preserving already downloaded files.<br />This will modify the queue order.'),
     'confirmWithoutSavingPrompt' : TT('Changes have not been saved, and will be lost.'),
     'explain-sessionExpire': TT('When your IP address changes or SABnzbd is restarted the session will expire.'),
-    #'explain-Shutdown' : TT('This will end the SABnzbd process. <br />You will be unable to access SABnzbd and no downloading will take place until the service is started again.'),
     'opt-enable_unzip' : TT('Enable Unzip'),
     'opt-enable_7zip' : TT('Enable 7zip'),
     'opt-multicore-par2' : TT('Multicore Par2'),
-    'explain-nosslcontext' : TT('Secure (SSL) connections from SABnzbd to newsservers and HTTPS websites will be encrypted, however, validating a server\'s identity using its certificates is not possible. Python 2.7.9 or above, OpenSSL 1.0.2 or above and up-to-date local CA certificates are required.'),
+    'explain-nosslcontext' : TT('Secure (SSL) connections from SABnzbd to newsservers and HTTPS websites will be encrypted, however, validating a server\'s identity using its certificates is not possible. OpenSSL 1.0.2 or above and up-to-date local CA certificates are required.'),
     'explain-getpar2mt': TT('Speed up repairs by installing multicore Par2, it is available for many platforms.'),
     'version' : TT('Version'),
     'uptime' : TT('Uptime'),
@@ -476,6 +475,12 @@ SKIN_TEXT = {
     'explain-nice' : TT('Read the Wiki Help on this!'),
     'opt-ionice' : TT('IONice Parameters'),
     'explain-ionice' : TT('Read the Wiki Help on this!'),
+    'opt-win_process_prio' : TT('External process priority'),
+    'explain-win_process_prio' : TT('Read the Wiki Help on this!'),
+    'win_process_prio-high' : TT('High'),
+    'win_process_prio-normal' : TT('Normal'),
+    'win_process_prio-low' : TT('Low'),
+    'win_process_prio-idle' : TT('Idle'),
     'opt-auto_disconnect' : TT('Disconnect on Empty Queue'),
     'explain-auto_disconnect' : TT('Disconnect from Usenet server(s) when queue is empty or paused.'),
     'opt-auto_sort' : TT('Sort by Age'),
@@ -540,10 +545,10 @@ SKIN_TEXT = {
     'opt-rating_filter_downvoted' : TT('More thumbs down than up'),
     'opt-rating_filter_keywords' : TT('Title keywords'),
     'explain-rating_filter_keywords' : TT('Comma separated list'),
-    'opt-load_balancing' : TT('Server load-balancing'),
-    'no-load-balancing' : TT('Prevent load-balancing'),
-    'load-balancing' : TT('Allow load-balancing'),
-    'load-balancing-happy-eyeballs' : TT('Allow load-balancing with optimization for IPv6'),
+    'opt-load_balancing' : TT('Server IP address selection'),
+    'no-load-balancing' : TT('First IP address'),
+    'load-balancing' : TT('Randomly selected IP address'),
+    'load-balancing-happy-eyeballs' : TT('Quickest IP address, preferring IPv6'),
     'explain-load_balancing' : TT('Useful if a newsserver has more than one IPv4/IPv6 address'),
 
 # Config->Server
@@ -576,9 +581,6 @@ SKIN_TEXT = {
     'srv-bandwidth' : TT('Bandwidth'),
     'srv-send_group' : TT('Send Group'),
     'srv-explain-send_group' : TT('Send group command before requesting articles.'),
-    'srv-categories' : TT('Categories'),
-    'srv-explain-categories' : TT('Only use this server for these categories.'),
-    'srv-explain-no-categories' : TT('None of the enabled servers have the \'Default\' category selected. Jobs in the queue that are not assigned to one of the server\'s categories will not be downloaded.'),
     'srv-notes' : TT('Personal notes'),
 
 # Config->Scheduling
@@ -636,17 +638,15 @@ SKIN_TEXT = {
     'explain-email_account' : TT('For authenticated email, account name.'),
     'opt-email_pwd' : TT('OPTIONAL Account Password'),
     'explain-email_pwd' : TT('For authenticated email, password.'),
+    'notifications-notesent': TT('Notification Sent!'),
     'growlSettings' : TT('Growl'), #: Header Growl section
     'opt-growl_enable' : TT('Enable Growl'), #: Don't translate "Growl"
-    'explain-growl_enable' : TT('Send notifications to Growl'), #: Don't translate "Growl"
     'opt-growl_server' : TT('Server address'), #: Address of Growl server
     'explain-growl_server' : TT('Only use for remote Growl server (host:port)'), #: Don't translate "Growl"
     'opt-growl_password' : TT('Server password'), #: Growl server password
     'explain-growl_password' : TT('Optional password for Growl server'), #: Don't translate "Growl"
     'opt-ntfosd_enable' : TT('Enable NotifyOSD'), #: Don't translate "NotifyOSD"
-    'explain-ntfosd_enable' : TT('Send notifications to NotifyOSD'), #: Don't translate "NotifyOSD"
     'opt-ncenter_enable' : TT('Notification Center'),
-    'explain-ncenter_enable' : TT('Send notifications to Notification Center'),
     'opt-acenter_enable' : TT('Enable Windows Notifications'),
     'testNotify' : TT('Test Notification'),
     'section-NC' : TT('Notification Center'), #: Header for OSX Notfication Center section
@@ -712,6 +712,7 @@ SKIN_TEXT = {
     'button-SeasonS01E05' : TT('S01E05 Season Folder'),
     'button-Ep1x05' : TT('1x05 Episode Folder'),
     'button-EpS01E05' : TT('S01E05 Episode Folder'),
+    'button-FileLikeFolder' : TT('Job Name as Filename'),
     'sort-title' : TT('Title'),
     'movie-sp-name' : TT('Movie Name'),
     'movie-dot-name' : TT('Movie.Name'),
@@ -731,12 +732,11 @@ SKIN_TEXT = {
     'partNumber' : TT('Part Number'),
     'decade' : TT('Decade'),
     'orgFilename' : TT('Original Filename'),
-    'orgDirname' : TT('Original Foldername'),
+    'orgJobname' : TT('Original Job Name'),
     'lowercase' : TT('Lower Case'),
     'TEXT' : TT('TEXT'),
     'text' : TT('text'),
     'sort-File' : TT('file'),
-    'sort-Folder' : TT('folder'),
     'sortString' : TT('Sort String'),
     'multiPartLabel' : TT('Multi-part label'),
     'button-inFolders' : TT('In folders'),
@@ -833,7 +833,6 @@ SKIN_TEXT = {
     'Glitter-addFromFile' : TT('Upload NZB'),
     'Glitter-chooseFile' : TT('Browse'),
     'Glitter-addnzbFilename' : TT('Optionally specify a filename'),
-    'Glitter-nzbFormats' : TT('Formats: .nzb, .rar, .zip, .gz, .bz2'),
     'Glitter-submit' : TT('Submit'),
     'Glitter-openInfoURL' : TT('Open Informational URL'),
     'Glitter-sendThanks' : TT('Submitted. Thank you!'),
@@ -862,6 +861,7 @@ SKIN_TEXT = {
     'Glitter-pausePromptFail': TT('Sorry, we could not interpret that. Try again.'),
     'Glitter-pauseFor' : TT('Pause for...'),
     'Glitter-refresh' : TT('Refresh'),
+    'Glitter-logText' : TT('All usernames, passwords and API-keys are automatically removed from the log and the included copy of your settings.'),
     'Glitter-sortAgeAsc' : TT('Sort by Age <small>Oldest&rarr;Newest</small>'),
     'Glitter-sortAgeDesc' : TT('Sort by Age <small>Newest&rarr;Oldest</small>'),
     'Glitter-sortNameAsc' : TT('Sort by Name <small>A&rarr;Z</small>'),
@@ -934,47 +934,6 @@ SKIN_TEXT = {
     'Plush-idle' : TT('IDLE'),
     'Plush-downloads' : TT('Downloads'),
     'Plush-tab-repair' : TT('Queue repair'),
-
-#smpl skin
-    'smpl-purgehist' : TT('Delete Completed'),
-    'smpl-purgefailhistOK?' : TT('Delete the all failed items from the history?'),
-    'smpl-purgefailhist' : TT('Delete Failed'),
-    'smpl-retryAllJobs?' : TT('Retry all failed jobs?'),
-    'smpl-retryAll' : TT('Retry all'), #: Link in SMPL for "Retry all failed jobs"
-    'smpl-links' : TT('Links'),
-    'smpl-size' : TT('Size'),
-    'smpl-path' : TT('Path'),
-    'smpl-numresults@3' : TT('Showing %s to %s out of %s results'),
-    'smpl-noresult' : TT('No results'),
-    'smpl-oneresult' : TT('Showing one result'),
-    'smpl-first' : TT('First'),
-    'smpl-previous' : TT('Prev'),
-    'smpl-next' : TT('Next'),
-    'smpl-last' : TT('Last'),
-    'smpl-pauseForPrompt' : TT('Pause for how many minutes?'),
-    'smpl-paused' : TT('Paused'),
-    'smpl-downloading' : TT('Downloading'),
-    'smpl-idle' : TT('Idle'),
-    'smpl-emailsent' : TT('Email Sent!'),
-    'smpl-notesent' : TT('Notification Sent!'),
-    'smpl-saving' : TT('Saving..'),
-    'smpl-saved' : TT('Saved'),
-    'smpl-failed' : TT('Failed'),
-    'smpl-speed' : TT('Speed'),
-    'smpl-toggleadd' : TT('Toggle Add NZB'),
-    'smpl-dualView1' : TT('DualView1'),
-    'smpl-dualView2' : TT('DualView2'),
-    'smpl-warnings' : TT('Warnings'),
-    'smpl-custom' : TT('Custom'),
-    'smpl-restartOK?' : TT('Are you sure you want to restart SABnzbd?'),
-    'smpl-refreshr' : TT('Refresh rate'),
-    'smpl-purgeQueue' : TT('Delete All'),
-    'smpl-hideEdit' : TT('Hide Edit Options'),
-    'smpl-showEdit' : TT('Show Edit Options'),
-    'smpl-edit' : TT('Edit'),
-    'smpl-progress' : TT('Progress'),
-    'smpl-timeleft' : TT('Timeleft'),
-    'smpl-age' : TT('Age'),
 
 #Wizard
     'wizard-quickstart' :  TT('SABnzbd Quick-Start Wizard'),

@@ -65,6 +65,7 @@ function ViewModel() {
     self.statusInfo.downloaddirspeed = ko.observable();
     self.statusInfo.completedir = ko.observable();
     self.statusInfo.completedirspeed = ko.observable();
+    self.statusInfo.internetbandwidth = ko.observable();
 
     /***
         Dynamic functions
@@ -96,7 +97,7 @@ function ViewModel() {
 
     // Dynamic speed text function
     self.speedText = ko.pureComputed(function() {
-        return self.speed() + ' ' + (self.speedMetrics[self.speedMetric()] ? self.speedMetrics[self.speedMetric()] : "KB/s");
+        return self.speed() + ' ' + (self.speedMetrics[self.speedMetric()] ? self.speedMetrics[self.speedMetric()] : "B/s");
     });
 
     // Dynamic icon
@@ -356,19 +357,6 @@ function ViewModel() {
                 self.history.lastUpdate = 0
             }).always(self.setNextUpdate)
             // Do not continue!
-            return;
-        }
-
-        /**
-            Do first load with start-data
-            Only works when the server knows the settings!
-        **/
-        if(glitterPreLoadHistory && self.useGlobalOptions()) {
-            self.updateQueue(glitterPreLoadQueue);
-            self.updateHistory(glitterPreLoadHistory);
-            glitterPreLoadQueue = undefined;
-            glitterPreLoadHistory = undefined;
-            self.setNextUpdate()
             return;
         }
 
@@ -776,6 +764,7 @@ function ViewModel() {
                 self.statusInfo.downloaddirspeed(data.status.downloaddirspeed)
                 self.statusInfo.completedir(data.status.completedir)
                 self.statusInfo.completedirspeed(data.status.completedirspeed)
+                self.statusInfo.internetbandwidth(data.status.internetbandwidth)
                 self.statusInfo.dnslookup(data.status.dnslookup)
                 self.statusInfo.localipv4(data.status.localipv4)
                 self.statusInfo.publicipv4(data.status.publicipv4)
@@ -785,15 +774,28 @@ function ViewModel() {
             }
 
             // Update the servers
-            if(self.statusInfo.servers().length == 0) {
+            if(self.statusInfo.servers().length != data.status.servers.length) {
+                // Only now we can subscribe to the log-level-changes! (only at start)
+                if(self.statusInfo.servers().length == 0) {
+                    self.statusInfo.loglevel.subscribe(function(newValue) {
+                        // Update log-level
+                        callSpecialAPI('./status/change_loglevel/', {
+                            loglevel: newValue
+                        });
+                    })
+                }
+
+                // Empty them, in case of update
+                self.statusInfo.servers([])
+
                 // Initial add
                 $.each(data.status.servers, function() {
                     self.statusInfo.servers.push({
-                        'servername': this.servername,
-                        'serveroptional': this.serveroptional,
-                        'serverpriority': this.serverpriority,
-                        'servertotalconn': this.servertotalconn,
-                        'serverssl': this.serverssl,
+                        'servername': ko.observable(this.servername),
+                        'serveroptional': ko.observable(this.serveroptional),
+                        'serverpriority': ko.observable(this.serverpriority),
+                        'servertotalconn': ko.observable(this.servertotalconn),
+                        'serverssl': ko.observable(this.serverssl),
                         'serversslinfo': ko.observable(this.serversslinfo),
                         'serveractiveconn': ko.observable(this.serveractiveconn),
                         'servererror': ko.observable(this.servererror),
@@ -801,23 +803,20 @@ function ViewModel() {
                         'serverconnections': ko.observableArray(this.serverconnections)
                     })
                 })
-
-                // Only now we can subscribe to the log-level-changes!
-                self.statusInfo.loglevel.subscribe(function(newValue) {
-                    // Update log-level
-                    callSpecialAPI('./status/change_loglevel/', {
-                        loglevel: newValue
-                    });
-                })
             } else {
                 // Update
                 $.each(data.status.servers, function(index) {
                     var activeServer = self.statusInfo.servers()[index];
-                    activeServer.serveractiveconn(this.serveractiveconn)
-                    activeServer.servererror(this.servererror)
-                    activeServer.serveractive(this.serveractive)
+                    activeServer.servername(this.servername),
+                    activeServer.serveroptional(this.serveroptional),
+                    activeServer.serverpriority(this.serverpriority),
+                    activeServer.servertotalconn(this.servertotalconn),
+                    activeServer.serverssl(this.serverssl),
+                    activeServer.serversslinfo(this.serversslinfo),
+                    activeServer.serveractiveconn(this.serveractiveconn),
+                    activeServer.servererror(this.servererror),
+                    activeServer.serveractive(this.serveractive),
                     activeServer.serverconnections(this.serverconnections)
-                    activeServer.serversslinfo(this.serversslinfo)
                 })
             }
 
@@ -837,6 +836,30 @@ function ViewModel() {
         callSpecialAPI('./status/dashrefresh/').then(function() {
             self.loadStatusInfo(true, true)
         })
+    }
+
+    // Download a test-NZB
+    self.testDownload = function(data, event) {
+        var nzbSize = $(event.target).data('size')
+
+        // Maybe it was a click on the icon?
+        if(nzbSize == undefined) {
+            nzbSize = $(event.target.parentElement).data('size')
+        }
+
+        // Build request
+        var theCall = {
+            mode: "addurl",
+            name: "https://sabnzbd.org/tests/test_download_" + nzbSize + ".nzb",
+            priority: self.queue.priorityName["Force"]
+        }
+
+        // Add
+        callAPI(theCall).then(function(r) {
+            // Hide and reset/refresh
+            self.refresh()
+            $("#modal-options").modal("hide");
+        });
     }
 
     // Unblock server

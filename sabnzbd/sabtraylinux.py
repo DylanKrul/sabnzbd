@@ -1,5 +1,5 @@
-#!/usr/bin/python -OO
-# Copyright 2008-2017 The SABnzbd-Team <team@sabnzbd.org>
+#!/usr/bin/python3 -OO
+# Copyright 2007-2019 The SABnzbd-Team <team@sabnzbd.org>
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License
@@ -19,9 +19,8 @@
 sabnzbd.sabtraylinux - System tray icon for Linux, inspired from the Windows one
 """
 
-import gtk
-import gobject
-import cherrypy
+from gi.repository import Gtk
+from gi.repository import GObject
 from time import sleep
 import subprocess
 from threading import Thread
@@ -57,29 +56,27 @@ class StatusIcon(Thread):
             logging.debug('language file not loaded, waiting')
 
         self.sabpaused = False
-        self.statusicon = gtk.StatusIcon()
+        self.statusicon = Gtk.StatusIcon()
         self.icon = self.sabicons['default']
         self.refresh_icon()
         self.tooltip = "SABnzbd"
         self.refresh_tooltip()
         self.statusicon.connect("popup-menu", self.right_click_event)
 
-        gtk.gdk.threads_init()
-        gtk.gdk.threads_enter()
-        gobject.timeout_add(self.updatefreq, self.run)
-        gtk.main()
+        GObject.timeout_add(self.updatefreq, self.run)
+        Gtk.main()
 
     def refresh_icon(self):
         self.statusicon.set_from_file(self.icon)
 
     def refresh_tooltip(self):
-        self.statusicon.set_tooltip(self.tooltip)
+        self.statusicon.set_tooltip_text(self.tooltip)
 
     # run this every updatefreq ms
     def run(self):
         self.sabpaused, bytes_left, bpsnow, time_left = api.fast_queue()
-        mb_left = to_units(bytes_left, dec_limit=1)
-        speed = to_units(bpsnow, dec_limit=1)
+        mb_left = to_units(bytes_left)
+        speed = to_units(bpsnow)
 
         if self.sabpaused:
             self.tooltip = T('Paused')
@@ -97,19 +94,19 @@ class StatusIcon(Thread):
 
     def right_click_event(self, icon, button, time):
         """ menu """
-        menu = gtk.Menu()
+        menu = Gtk.Menu()
 
-        maddnzb = gtk.MenuItem(T("Add NZB"))
-        mshowinterface = gtk.MenuItem(T("Show interface"))
-        mopencomplete = gtk.MenuItem(T("Open complete folder"))
-        mrss = gtk.MenuItem(T("Read all RSS feeds"))
+        maddnzb = Gtk.MenuItem(T("Add NZB"))
+        mshowinterface = Gtk.MenuItem(T("Show interface"))
+        mopencomplete = Gtk.MenuItem(T("Open complete folder"))
+        mrss = Gtk.MenuItem(T("Read all RSS feeds"))
 
         if self.sabpaused:
-            mpauseresume = gtk.MenuItem(T("Resume"))
+            mpauseresume = Gtk.MenuItem(T("Resume"))
         else:
-            mpauseresume = gtk.MenuItem(T("Pause"))
-        mrestart = gtk.MenuItem(T("Restart"))
-        mshutdown = gtk.MenuItem(T("Shutdown"))
+            mpauseresume = Gtk.MenuItem(T("Pause"))
+        mrestart = Gtk.MenuItem(T("Restart"))
+        mshutdown = Gtk.MenuItem(T("Shutdown"))
 
         maddnzb.connect("activate", self.addnzb)
         mshowinterface.connect("activate", self.browse)
@@ -128,25 +125,26 @@ class StatusIcon(Thread):
         menu.append(mshutdown)
 
         menu.show_all()
-        menu.popup(None, None, gtk.status_icon_position_menu, button, time, self.statusicon)
+        menu.popup(None, None, self.statusicon.position_menu, self.statusicon, button, time)
 
     def addnzb(self, icon):
         """ menu handlers """
-        dialog = gtk.FileChooserDialog(title=None, action=gtk.FILE_CHOOSER_ACTION_OPEN,
-                                       buttons=(gtk.STOCK_CANCEL, gtk.RESPONSE_CANCEL, gtk.STOCK_OPEN, gtk.RESPONSE_OK))
+        dialog = Gtk.FileChooserDialog(title=None, action=Gtk.FileChooserAction.OPEN,
+                                       buttons=(Gtk.STOCK_CANCEL, Gtk.ResponseType.CANCEL, Gtk.STOCK_OPEN, Gtk.ResponseType.OK))
         dialog.set_select_multiple(True)
 
-        filter = gtk.FileFilter()
-        filter.set_name("*.nbz,*.nbz.gz,*.bz2,*.zip,*.rar")
-        filter.add_pattern("*.nzb*")
-        filter.add_pattern("*.nzb.gz")
-        filter.add_pattern("*.nzb.bz2")
+        filter = Gtk.FileFilter()
+        filter.set_name("*.nzb,*.gz,*.bz2,*.zip,*.rar,*.7z")
+        filter.add_pattern("*.nzb")
+        filter.add_pattern("*.gz")
+        filter.add_pattern("*.bz2")
         filter.add_pattern("*.zip")
         filter.add_pattern("*.rar")
+        filter.add_pattern("*.7z")
         dialog.add_filter(filter)
 
         response = dialog.run()
-        if response == gtk.RESPONSE_OK:
+        if response == Gtk.ResponseType.OK:
             for filename in dialog.get_filenames():
                 add_local(filename)
         dialog.destroy()
@@ -169,9 +167,7 @@ class StatusIcon(Thread):
 
     def shutdown(self, icon):
         self.hover_text = T('Shutdown')
-        sabnzbd.halt()
-        cherrypy.engine.exit()
-        sabnzbd.SABSTOP = True
+        sabnzbd.shutdown_program()
 
     def pause(self):
         scheduler.plan_resume(0)

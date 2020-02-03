@@ -1,5 +1,5 @@
-#!/usr/bin/python -OO
-# Copyright 2008-2017 The SABnzbd-Team <team@sabnzbd.org>
+#!/usr/bin/python3 -OO
+# Copyright 2007-2019 The SABnzbd-Team <team@sabnzbd.org>
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License
@@ -22,6 +22,7 @@ sabnzbd.articlecache - Article cache handling
 import sys
 import logging
 import threading
+import struct
 
 import sabnzbd
 from sabnzbd.decorators import synchronized
@@ -31,7 +32,7 @@ from sabnzbd.constants import GIGI, ANFO
 ARTICLE_LOCK = threading.Lock()
 
 
-class ArticleCache(object):
+class ArticleCache:
     do = None
 
     def __init__(self):
@@ -40,6 +41,13 @@ class ArticleCache(object):
         self.__cache_size = 0
         self.__article_list = []    # List of buffered articles
         self.__article_table = {}   # Dict of buffered articles
+
+        # On 32 bit we only allow the user to set 1GB
+        # For 64 bit we allow up to 4GB, in case somebody wants that
+        self.__cache_upper_limit = GIGI
+        if sabnzbd.DARWIN or sabnzbd.WIN64 or (struct.calcsize("P") * 8) == 64:
+            self.__cache_upper_limit = 4*GIGI
+
         ArticleCache.do = self
 
     @synchronized(ARTICLE_LOCK)
@@ -51,14 +59,13 @@ class ArticleCache(object):
         """ Called when cache limit changes """
         self.__cache_limit_org = limit
         if limit < 0:
-            self.__cache_limit = GIGI
+            self.__cache_limit = self.__cache_upper_limit
         else:
-            self.__cache_limit = min(limit, GIGI)
+            self.__cache_limit = min(limit, self.__cache_upper_limit)
 
     @synchronized(ARTICLE_LOCK)
-    def reserve_space(self, data):
+    def reserve_space(self, data_size):
         """ Is there space left in the set limit? """
-        data_size = sys.getsizeof(data) * 64
         self.__cache_size += data_size
         if self.__cache_size + data_size > self.__cache_limit:
             return False
@@ -66,31 +73,31 @@ class ArticleCache(object):
             return True
 
     @synchronized(ARTICLE_LOCK)
-    def free_reserve_space(self, data):
+    def free_reserve_space(self, data_size):
         """ Remove previously reserved space """
-        data_size = sys.getsizeof(data) * 64
         self.__cache_size -= data_size
         return self.__cache_size + data_size < self.__cache_limit
 
     @synchronized(ARTICLE_LOCK)
     def save_article(self, article, data):
-        nzf = article.nzf
-        nzo = nzf.nzo
-
-        if nzo.is_gone():
+        if article.nzf.nzo.is_gone():
             # Do not discard this article because the
             # file might still be processed at this moment!!
             return
 
-        saved_articles = article.nzf.nzo.saved_articles
+        # Register article
+        if article not in article.nzf.nzo.saved_articles:
+            article.nzf.nzo.saved_articles.append(article)
 
-        if article not in saved_articles:
-            saved_articles.append(article)
+        if article.lowest_partnum and not article.nzf.import_finished:
+            # Write the first-fetched articles to disk
+            # Otherwise the cache could overflow
+            self.__flush_article(article, data)
+            return
 
         if self.__cache_limit:
             if self.__cache_limit < 0:
                 self.__add_to_cache(article, data)
-
             else:
                 data_size = len(data)
 

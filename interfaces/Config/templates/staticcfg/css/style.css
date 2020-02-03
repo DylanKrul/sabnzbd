@@ -4,16 +4,13 @@ body {
 }
 #logo {
     display: block;
-    margin: auto;
-    margin-top: 3px;
+    margin: 3px auto auto;
 }
 
 #content {
     color: #000;
-    padding: 15px 20px 20px;
+    padding: 65px 20px 20px;
     font-size: 13px;
-    padding-top: 65px;
-    padding-bottom: 20px;
 }
 .colmask {
     z-index: 20;
@@ -23,15 +20,31 @@ body {
     overflow: visible;
     border: 1px solid #dfdede;
     background-color: #FFF;
-    border: 1px solid rgba(0, 0, 0, 0.2);
     width: 100%
 }
-.section, .Servers form, #addFeed, #addFeedContent {
+.advanced-button {
+    float: right;
+    width: auto;
+    margin: 0 4px 0px 0px;
+    font-size: 13px;
+    color: inherit;
+    height: auto;
+    padding-bottom: 5px;
+}
+#advanced-settings-button {
+    float: left;
+    margin: 2px 7px 0px 0px;
+}
+.advanced-buttonSeperator {
+    width: 1px;
+    height: 34px;
+    background-color: #dfdede;
+    float: right;
+    margin: 0px 10px;
+}
+.section, #addFeed, #addFeedContent {
     border-bottom: 1px solid #dfdede;
     overflow: auto;
-}
-.section:last-child, .Servers form:last-child {
-    border: 0;
 }
 .col2 {
     z-index: 10;
@@ -150,13 +163,13 @@ input[type="checkbox"]+.desc {
     overflow: hidden;
     min-width: 555px;
 }
-.field-pair:nth-child(odd),
 .Key tr:nth-child(odd),
 .tab-pane tr:nth-child(odd),
 .even {
     background-color: #F8F8F8;
 }
-.field-pair:last-child {
+.field-pair:last-child,
+.no-field-pair-bg {
     background-color: transparent;
 }
 .alt,
@@ -298,7 +311,7 @@ tr.separator {
     visibility: hidden;
 }
 
-.Categories form.sorting-row:nth-child(even) tr {
+.Categories form.sorting-row:nth-child(2n-1) tr {
     background-color: #F8F8F8;
 }
 
@@ -513,7 +526,7 @@ tr.separator {
 }
 #filebrowser_modal .checkbox {
     float: left;
-    margin:  8px 5px 0x;
+    margin:  8px 5px 0px;
 }
 #filebrowser_modal .checkbox input {
     margin-top: 1px;
@@ -560,6 +573,7 @@ h2.activeRSS {
     float: left;
     margin: 0 6px 0 2px;
     text-align: center;
+    color: black !important;
 }
 .source-icon span {
     top: -3px;
@@ -584,8 +598,7 @@ h2.activeRSS {
     padding-top: .4em;
 }
 #subscriptions .chk {
-    padding: 5px;
-    padding-top: 8px;
+    padding: 8px 5px 5px;
     vertical-align: middle;
 }
 #subscriptions .title {
@@ -757,7 +770,6 @@ input[type=radio] {
 input[type="button"],
 input[type="submit"] {
     color: #333;
-    background-color: #fff;
     display:inline-block;
     padding:6px 12px;
     margin-bottom: 0;
@@ -768,7 +780,7 @@ input[type="submit"] {
     white-space:nowrap;
     vertical-align:middle;
     cursor:pointer;
-    background-image:none;
+    background: #fff none;
     border:1px solid #ccc;
     height: 34px;
 }
@@ -986,7 +998,7 @@ input[type="checkbox"] {
 }
 
 .Servers .col2.server-disabled .label {
-    color: ##777 !important;
+    color: #777 !important;
 }
 
 .Servers .col2 .label:nth-child(2) {
@@ -1023,19 +1035,14 @@ input[type="checkbox"] {
     color: black;
 }
 
-.Servers .chart-selector {
-    position: absolute;
-    display: block;
-    top: -7px;
-    left: 50%;
-    width: 150px;
-    margin-left: -50px;
-    min-width: initial;
-    opacity: 0.8;
+.Servers .chart-selector-container {
+    float: right;
 }
 
-.Servers .chart-selector:hover {
-    opacity: 1;
+.Servers .chart-selector-container .glyphicon {
+    font-size: 1.3em;
+    padding-right: 4px;
+    top: 5px;
 }
 
 .Servers .ct-grid.ct-vertical:first-of-type {
@@ -1052,9 +1059,7 @@ input[type="checkbox"] {
 
 .Servers .col2 label,
 .Email .col2 label {
-    margin: 0;
-    margin-left: 4px;
-    margin-top: 2px;
+    margin: 2px 0 0 4px;
     cursor: pointer;
 }
 
@@ -1083,9 +1088,10 @@ input[type="checkbox"] {
 }
 
 .host-warning {
-    color: #404040;
-    margin-left: 7px;
-    top: 3px;
+    color: #F0AD4E;
+    margin-left: 13px;
+    top: 5px;
+    font-size: 1.2em;
 }
 
 .fileBrowser .glyphicon {
@@ -1129,6 +1135,7 @@ input[type="checkbox"] {
 }
 .value-and-select select {
     min-width: 30px;
+    margin-top: 1px;
 }
 
 .dotOne, .dotTwo, .dotThree {
@@ -1225,7 +1232,9 @@ input[type="checkbox"] {
         margin-bottom: 0;
     }
 
-    .Servers .server-chart {
+    .Servers .server-chart,
+    .Servers .chart-selector-container,
+    .Servers .advanced-buttonSeperator {
         display: none;
     }
 
@@ -1327,9 +1336,7 @@ input[type="checkbox"] {
     }
 
     .desc {
-        margin: 0;
-        margin-left: 3px;
-        margin-top: 2px;
+        margin: 2px 0 0 3px;
         padding: 0 !important;
     }
 

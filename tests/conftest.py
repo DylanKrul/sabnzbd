@@ -1,5 +1,5 @@
-#!/usr/bin/python -OO
-# Copyright 2008-2017 The SABnzbd-Team <team@sabnzbd.org>
+#!/usr/bin/python3 -OO
+# Copyright 2007-2019 The SABnzbd-Team <team@sabnzbd.org>
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License
@@ -16,56 +16,78 @@
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 """
-tests.conftest - Wrappers to start SABnzbd for testing
+tests.conftest - Setup pytest fixtures
+These have to be separate otherwise SABnzbd is started multiple times!
 """
-
-import os
-import itertools
-import urllib2
-import pytest
 import shutil
-import time
-import testhelper
+import subprocess
+import sys
 
-from xprocess import ProcessStarter
+from tests.testhelper import *
 
-@pytest.fixture(scope='session')
-def sabnzbd_connect(request, xprocess):
-    # Get cache directory
-    base_path = os.path.dirname(os.path.abspath(__file__))
-    cache_dir = os.path.join(base_path, 'cache')
 
-    # Copy basic config file
+@pytest.fixture(scope="session")
+def start_sabnzbd():
+    # Remove cache if already there
+    if os.path.isdir(SAB_CACHE_DIR):
+        shutil.rmtree(SAB_CACHE_DIR)
+
+    # Copy basic config file with API key
+    os.makedirs(SAB_CACHE_DIR, exist_ok=True)
+    shutil.copyfile(os.path.join(SAB_BASE_DIR, "sabnzbd.basic.ini"), os.path.join(SAB_CACHE_DIR, "sabnzbd.ini"))
+
+    # Check if we have language files
+    if not os.path.exists(os.path.join(SAB_BASE_DIR, "..", "locale")):
+        # Compile and wait to complete
+        lang_command = "%s %s/../tools/make_mo.py" % (sys.executable, SAB_BASE_DIR)
+        subprocess.Popen(lang_command.split()).communicate(timeout=30)
+
+        # Check if it exists now, fail otherwise
+        if not os.path.exists(os.path.join(SAB_BASE_DIR, "..", "locale")):
+            raise FileNotFoundError("Failed to compile language files")
+
+    # Start SABnzbd and continue
+    sab_command = "%s %s/../SABnzbd.py --new -l2 -s %s:%s -b0 -f %s" % (
+        sys.executable,
+        SAB_BASE_DIR,
+        SAB_HOST,
+        SAB_PORT,
+        SAB_CACHE_DIR,
+    )
+    subprocess.Popen(sab_command.split())
+
+    # Wait for SAB to respond
+    for _ in range(10):
+        try:
+            get_url_result()
+            # Woohoo, we're up!
+            break
+        except requests.ConnectionError:
+            time.sleep(1)
+    else:
+        # Make sure we clean up
+        shutdown_sabnzbd()
+        raise requests.ConnectionError()
+
+    # How we run the tests
+    yield True
+
+    # Shutdown SABnzbd gracefully
+    shutdown_sabnzbd()
+
+
+def shutdown_sabnzbd():
+    # Graceful shutdown request
     try:
-        os.mkdir(cache_dir)
-        shutil.copyfile(os.path.join(base_path, 'sabnzbd.basic.ini'), os.path.join(cache_dir, 'sabnzbd.ini'))
-    except:
+        get_url_result("shutdown")
+    except requests.ConnectionError:
         pass
 
-    class Starter(ProcessStarter):
-        # Wait for SABnzbd to start
-        pattern = "ENGINE Bus STARTED"
-
-        # Start without browser and with basic logging
-        args = 'python ../../SABnzbd.py -l1 -s %s:%s -b0 -f %s' % (testhelper.SAB_HOST, testhelper.SAB_PORT, cache_dir)
-        args = args.split()
-
-        # We have to wait a bit longer than default
-        def filter_lines(self, lines):
-            return itertools.islice(lines, 500)
-
-    # Shut it down at the end
-    def shutdown_sabnzbd():
-        # Gracefull shutdown request
-        testhelper.get_url_result('shutdown')
-        # Takes a second to shutdown
-        for x in range(5):
-            try:
-                shutil.rmtree(cache_dir)
-                break
-            except:
-                time.sleep(1)
-    request.addfinalizer(shutdown_sabnzbd)
-
-    return xprocess.ensure("sabnzbd", Starter)
-
+    # Takes a second to shutdown
+    for x in range(10):
+        try:
+            shutil.rmtree(SAB_CACHE_DIR)
+            break
+        except OSError:
+            print("Unable to remove cache dir (try %d)" % x)
+            time.sleep(1)

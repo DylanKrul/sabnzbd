@@ -1,5 +1,5 @@
-#!/usr/bin/python -OO
-# Copyright 2008-2017 The SABnzbd-Team <team@sabnzbd.org>
+#!/usr/bin/python3 -OO
+# Copyright 2007-2019 The SABnzbd-Team <team@sabnzbd.org>
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License
@@ -21,7 +21,6 @@ sabnzbd.zconfig - bonjour/zeroconfig support
 
 import os
 import logging
-import cherrypy
 
 _HOST_PORT = (None, None)
 
@@ -80,11 +79,6 @@ def set_bonjour(host=None, port=None):
         return
 
     name = hostname()
-    if '.local' in name:
-        suffix = ''
-    else:
-        suffix = '.local'
-
     logging.debug('Try to publish in Bonjour as "%s" (%s:%s)', name, host, port)
     try:
         refObject = pybonjour.DNSServiceRegister(

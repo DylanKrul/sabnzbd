@@ -1,3 +1,5 @@
+<!--#from sabnzbd.constants import VALID_ARCHIVES, VALID_NZB_FILES#-->
+<!--#set $file_exts = ', '.join(VALID_NZB_FILES + VALID_ARCHIVES)#-->
 <!-- Notifcation box -->
 <div class="main-notification-box" style="display: none">
     <div class="main-notification-box-uploading">
@@ -137,10 +139,26 @@
                             </div>
                             <div class="col-sm-6 col-loading" data-bind="visible: !hasPerformanceInfo()">$T('Glitter-loading')<span class="loader-dot-one">.</span><span class="loader-dot-two">.</span><span class="loader-dot-three">.</span></div>
                         </div>
+                        <div class="row">
+                            <div class="col-sm-6">$T('dashboard-internetBandwidth')</div>
+                            <div class="col-sm-6" data-bind="visible: hasPerformanceInfo">
+                                <span data-bind="text: statusInfo.internetbandwidth()"></span> MB/s
+                                <a href="#" class="diskspeed-button" data-bind="click: testDiskSpeed" data-tooltip="true" data-placement="right" title="$T('dashboard-repeatTest')"><span class="glyphicon glyphicon-repeat"></span></a>
+                                <small>(<span data-bind="text: statusInfo.internetbandwidth()*8"></span> Mbps)</small>
+                            </div>
+                            <div class="col-sm-6 col-loading" data-bind="visible: !hasPerformanceInfo()">$T('Glitter-loading')<span class="loader-dot-one">.</span><span class="loader-dot-two">.</span><span class="loader-dot-three">.</span></div>
+                        </div>
+                        <div class="row test-download">
+                            <div class="col-sm-6">$T('dashboard-testDownload')</div>
+                            <div class="col-sm-6">
+                                <a href="#" class="btn btn-default" data-bind="click: testDownload" data-size="100MB" data-tooltip="true" data-placement="top" title="$T('dashboard-testDownload-explain')"><span class="glyphicon glyphicon-download-alt"></span> 100 MB</a>
+                                <a href="#" class="btn btn-default" data-bind="click: testDownload" data-size="1000MB" data-tooltip="true" data-placement="top" title="$T('dashboard-testDownload-explain')"><span class="glyphicon glyphicon-download-alt"></span> 1000 MB</a>
+                            </div>
+                        </div>
                         <hr />
                         <div class="row options-function-box">
                             <div class="col-sm-6">
-                                <a href="#" data-bind="click: forceDisconnect" class="btn btn-default "><span class="glyphicon glyphicon-minus-sign"></span> $T('link-forceDisc')</a>
+                                <a href="#" data-bind="click: forceDisconnect" class="btn btn-default" data-tooltip="true" data-placement="top" title="$T('explain-forceDisc')"><span class="glyphicon glyphicon-minus-sign"></span> $T('link-forceDisc')</a>
                             </div>
                             <div class="col-sm-6">
                                 <a href="#" data-bind="click: repairQueue" data-tooltip="true" data-placement="top" title="$T('explain-Repair').replace('<br>',' ').replace('<br />',' ')" class="btn btn-default">
@@ -150,7 +168,9 @@
                         </div>
                         <div class="row options-function-box">
                             <div class="col-sm-6">
-                                <a href="./status/showlog?session=$session" target="_blank" class="btn btn-default"><span class="glyphicon glyphicon-file"></span> $T('link-showLog')</a>
+                                <a href="./status/showlog?session=$session" target="_blank" class="btn btn-default" data-tooltip="true" data-placement="top" title="$T('Glitter-logText')">
+                                    <span class="glyphicon glyphicon-file"></span> $T('link-showLog')
+                                </a>
                             </div>
                             <div class="col-sm-6">
                                 <div class="input-group" data-tooltip="true" data-placement="top" title="$T('logging')">
@@ -173,7 +193,6 @@
                         </div>
                         <div data-bind="foreach: statusInfo.servers">
                             <div class="options-server-box">
-
                                 <div class="row">
                                     <div class="col-sm-6">$T('swtag-server')</div>
                                     <div class="col-sm-6">
@@ -425,7 +444,7 @@
                     <form data-bind="submit: addNZBFromURL" class="col-sm-6">
                         <fieldset>
                             <legend class="row-wrap-text">$T('Glitter-addFromURL')</legend>
-                            <div class="input-group" data-tooltip="true" data-placement="bottom" title="$T('Glitter-nzbFormats')">
+                            <div class="input-group" data-tooltip="true" data-placement="bottom" title="$file_exts">
                                 <input type="text" name="nzbURL" class="form-control" placeholder="$T('enterURL')" />
                                 <span class="input-group-btn">
                                     <input type="submit" name="Add" value="$T('add')" class="btn btn-default" />
@@ -436,10 +455,10 @@
                     <form data-bind="submit: addNZBFromFileForm" class="col-sm-6">
                         <fieldset>
                             <legend class="row-wrap-text">$T('Glitter-addFromFile')</legend>
-                            <div class="input-group" data-tooltip="true" data-placement="bottom" title="$T('Glitter-nzbFormats')">
+                            <div class="input-group" data-tooltip="true" data-placement="bottom" title="$file_exts">
                                 <label class="btn btn-default btn-file">
                                     <span class="glyphicon glyphicon-file"></span> <em>$T('Glitter-chooseFile')&hellip;</em>
-                                    <input type="file" multiple name="nzbFile" class="form-control" accept=".nzb,.rar,.zip,.gz,.bz2" data-bind="event : { change: updateBrowseLabel }" />
+                                    <input type="file" multiple name="nzbFile" class="form-control" accept="$file_exts" data-bind="event : { change: updateBrowseLabel }" />
                                 </label>
 
                                 <span class="input-group-btn">
@@ -561,10 +580,10 @@
                     <input type="hidden" name="retry_job_id" />
                     <fieldset>
                         <legend>$T('opt-extra-NZB')</legend>
-                        <div class="input-group input-group-addfile" data-tooltip="true" data-placement="bottom" title="$T('Glitter-nzbFormats')">
+                        <div class="input-group input-group-addfile" data-tooltip="true" data-placement="bottom" title="$file_exts">
                             <label class="btn btn-default btn-file">
                                 <span class="glyphicon glyphicon-file"></span> <em>$T('Glitter-chooseFile')&hellip;</em>
-                                <input type="file" name="nzbFile" class="form-control" accept=".nzb,.rar,.zip,.gz,.bz2" data-bind="event : { change: updateBrowseLabel }" />
+                                <input type="file" name="nzbFile" class="form-control" accept="$file_exts" data-bind="event : { change: updateBrowseLabel }" />
                             </label>
                         </div>
                     </fieldset>
@@ -632,7 +651,7 @@
                     </tbody>
                 </table>
                 <hr/>
-                <p><small>Copyright (C) 2008-2017, The SABnzbd Team &lt;team@sabnzbd.org&gt;<br/>$T('yourRights') </small></p>
+                <p><small>Copyright (C) 2007-2019, The SABnzbd Team &lt;team@sabnzbd.org&gt;<br/>$T('yourRights') </small></p>
             </div>
         </div>
     </div>
@@ -650,7 +669,6 @@
                 <button type="button" class="btn btn-danger" data-bind="click: history.emptyHistory" data-action="history-purgeremove-failed"><span class="glyphicon glyphicon-floppy-remove"></span> $T('purgeFailed-Files')</button><hr />
                 <button type="button" class="btn btn-danger" data-bind="click: history.emptyHistory" data-action="history-purge-completed"><span class="glyphicon glyphicon-floppy-saved"></span> $T('purgeCompl')</button><hr />
                 <button type="button" class="btn btn-danger" data-bind="click: history.emptyHistory" data-action="history-purge-page"><span class="glyphicon glyphicon-check"></span> $T('purgePage') <span class="label label-default" data-bind="text: history.historyItems().length"></span></button>
-
             </div>
         </div>
     </div>

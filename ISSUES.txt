@@ -27,12 +27,6 @@
   The problem is caused by the PAR2 utility and we cannot fix this now.
   This does not apply to files inside RAR files.
 
-- On Linux when you download files they may have the wrong character encoding.
-  You will see this only when downloaded files contain accented characters.
-  You need to fix it yourself by running the convmv utility (available for most Linux platforms).
-  Possible the file system override setting 'fsys_type' might be solve things:
-  See: https://sabnzbd.org/wiki/configuration/2.3/special
-
 - The "Watched Folder" sometimes fails to delete the NZB files it has
   processed. This happens when other software still accesses these files.
   Some third-party utilities supporting SABnzbd are known to do this.
@@ -66,3 +60,7 @@
   Config->Special->wait_for_dfolder to 1.
   SABnzbd will appear to hang until the drive is mounted.
 
+- If you experience speed-drops to KB/s when using a VPN, try setting the number of connections
+  to your servers to a total of 7. There is a CPU-usage reduction feature in SABnzbd that
+  gets confused by the way some VPN's handle the state of a connection. Below 8 connections
+  this feature is not active.

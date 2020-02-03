@@ -7,15 +7,15 @@ msgid ""
 msgstr ""
 "Project-Id-Version: sabnzbd\n"
 "Report-Msgid-Bugs-To: ОZZII <ozzii.translate@gmail.com>\n"
-"POT-Creation-Date: 2017-09-10 20:30+0000\n"
-"PO-Revision-Date: 2015-12-28 10:25+0000\n"
+"POT-Creation-Date: 2019-05-07 12:00+0000\n"
+"PO-Revision-Date: 2018-02-14 14:18+0000\n"
 "Last-Translator: Safihre <safihre@sabnzbd.org>\n"
 "Language-Team: Serbian <sr@li.org>\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"X-Launchpad-Export-Date: 2017-09-11 06:25+0000\n"
-"X-Generator: Launchpad (build 18449)\n"
+"X-Launchpad-Export-Date: 2019-05-08 05:49+0000\n"
+"X-Generator: Launchpad (build 18958)\n"
 
 #: SABnzbd.py [Error message]
 msgid "Failed to start web-interface"
@@ -43,7 +43,7 @@ msgstr "_yenc modul... NIJE pronađen!"
 msgid "par2 binary... NOT found!"
 msgstr "par2 program...NIJE pronađen!"
 
-#: SABnzbd.py [Error message] # SABnzbd.py [Error message]
+#: SABnzbd.py [Error message]
 msgid "Verification and repair will not be possible."
 msgstr ""
 
@@ -113,8 +113,7 @@ msgstr "Упозорење"
 msgid "Error"
 msgstr "Грeшкa"
 
-#: SABnzbd.py # sabnzbd/interface.py # sabnzbd/interface.py
-#: sabnzbd/osxmenu.py # sabnzbd/wizard.py
+#: SABnzbd.py # sabnzbd/interface.py # sabnzbd/osxmenu.py
 msgid "SABnzbd shutdown finished"
 msgstr "Гашење SABnzbd је завршено"
 
@@ -164,8 +163,7 @@ msgstr "Серверу су потребни име и лозинка."
 msgid "Connection Successful!"
 msgstr "Успешно привезивање!"
 
-#: sabnzbd/utils/servertests.py # sabnzbd/interface.py
-#: sabnzbd/newswrapper.py
+#: sabnzbd/utils/servertests.py # sabnzbd/interface.py # sabnzbd/newswrapper.py
 msgid "Authentication failed, check username/password."
 msgstr "Аутентификација погрешна, проверити име/лозинку."
 
@@ -189,7 +187,7 @@ msgstr "Fatalna greška pri snimanju trenutnog stanja"
 msgid "Trying to fetch NZB from %s"
 msgstr "Pokušaj da se učita NZB sa %s"
 
-#: sabnzbd/__init__.py [Error message] # sabnzbd/__init__.py [Error message] # sabnzbd/__init__.py [Error message]
+#: sabnzbd/__init__.py [Error message]
 msgid "Saving %s failed"
 msgstr "Snimanje %s neuspešno"
 
@@ -197,7 +195,7 @@ msgstr "Snimanje %s neuspešno"
 msgid "Cannot create temp file for %s"
 msgstr "Nemoguće kreiranje privremene datoteke za %s"
 
-#: sabnzbd/__init__.py [Warning message] # sabnzbd/__init__.py [Warning message]
+#: sabnzbd/__init__.py [Warning message]
 msgid "Trying to set status of non-existing server %s"
 msgstr "Покушај постављања статуса за непостојећи сервер %s"
 
@@ -213,9 +211,7 @@ msgstr "Učitavanje %s neuspešno"
 msgid "Loading %s failed with error %s"
 msgstr "Učitavanje %s neuspešno sa greškom %s"
 
-#: sabnzbd/api.py # sabnzbd/api.py # sabnzbd/api.py # sabnzbd/api.py
-#: sabnzbd/api.py # sabnzbd/api.py # sabnzbd/api.py # sabnzbd/api.py
-#: sabnzbd/skintext.py
+#: sabnzbd/api.py # sabnzbd/skintext.py
 msgid "Test Notification"
 msgstr "Probno obaveštenje"
 
@@ -298,7 +294,7 @@ msgstr "UPOZORENJE: Posao \"%s\" prekinut zbog ocene (%s)"
 msgid "Aborted, rating filter matched (%s)"
 msgstr "Prekinuto, filter ocene se poklopio (%s)"
 
-#: sabnzbd/assembler.py # sabnzbd/assembler.py # sabnzbd/misc.py [Error message]
+#: sabnzbd/assembler.py # sabnzbd/misc.py [Error message]
 msgid "%s missing"
 msgstr "%s nedostaje"
 
@@ -351,7 +347,7 @@ msgstr "Потребна је адреса сервера"
 msgid "Cannot create %s folder %s"
 msgstr "Не могу да креирам %s фасциклу %s"
 
-#: sabnzbd/config.py [Error message] # sabnzbd/config.py [Error message]
+#: sabnzbd/config.py [Error message]
 msgid "Cannot write to INI file %s"
 msgstr "Ne može da se upiše u INI datoteku %s"
 
@@ -392,14 +388,10 @@ msgid "SQL Command Failed, see log"
 msgstr "Neuspešna SQL komanda, videti izveštaj"
 
 #: sabnzbd/database.py [Error message]
-msgid "SQL Commit Failed, see log"
-msgstr "Погрешно SQL извршавање, видети извештај"
-
-#: sabnzbd/database.py [Error message]
 msgid "Failed to close database, see log"
 msgstr "Неуспешно затварање базе, видети извештај"
 
-#: sabnzbd/database.py [Error message] # sabnzbd/database.py [Error message]
+#: sabnzbd/database.py [Error message]
 msgid "Invalid stage logging in history for %s"
 msgstr "Погрешне етапе извештаја можете наћи у хронологији за %s"
 
@@ -410,10 +402,6 @@ msgstr "Dešifrovanje %s neuspešno"
 #: sabnzbd/decoder.py
 msgid "Decoder failure: Out of memory"
 msgstr ""
-
-#: sabnzbd/decoder.py
-msgid "CRC Error in %s (%s -> %s)"
-msgstr "CRC грешка у %s (%s -> %s)"
 
 #: sabnzbd/decoder.py
 msgid "Badly formed yEnc article in %s"
@@ -431,13 +419,11 @@ msgstr ""
 msgid "%s => missing from all servers, discarding"
 msgstr "%s => фали на свим серверима, одбацивање"
 
-#: sabnzbd/directunpacker.py # sabnzbd/directunpacker.py
 #: sabnzbd/directunpacker.py # sabnzbd/skintext.py
 msgid "Direct Unpack"
 msgstr ""
 
-#: sabnzbd/directunpacker.py # sabnzbd/skintext.py [PP status]
-#: sabnzbd/skintext.py [History: job status]
+#: sabnzbd/directunpacker.py # sabnzbd/skintext.py [PP status] # sabnzbd/skintext.py [History: job status]
 msgid "Completed"
 msgstr "Завршено"
 
@@ -455,20 +441,19 @@ msgid ""
 "time. Only works for jobs that do not need repair."
 msgstr ""
 
-#: sabnzbd/dirscanner.py # sabnzbd/dirscanner.py # sabnzbd/dirscanner.py
-#: sabnzbd/dirscanner.py [Error message] # sabnzbd/dirscanner.py [Warning message] # sabnzbd/rss.py [Warning message]
+#: sabnzbd/dirscanner.py # sabnzbd/dirscanner.py [Error message] # sabnzbd/dirscanner.py [Warning message] # sabnzbd/rss.py [Warning message]
 msgid "Cannot read %s"
 msgstr "Неуспешно читање %s"
 
-#: sabnzbd/dirscanner.py [Error message] # sabnzbd/dirscanner.py [Error message]
+#: sabnzbd/dirscanner.py [Error message]
 msgid "Error while adding %s, removing"
 msgstr "Грешка додавања %s, уклањање"
 
-#: sabnzbd/dirscanner.py [Error message] # sabnzbd/dirscanner.py [Error message]
+#: sabnzbd/dirscanner.py [Error message]
 msgid "Error removing %s"
 msgstr "Greška pri uklanjanju %s"
 
-#: sabnzbd/dirscanner.py [Error message] # sabnzbd/dirscanner.py [Error message]
+#: sabnzbd/dirscanner.py [Error message]
 msgid "Cannot read Watched Folder %s"
 msgstr "Неуспешно читање надгледане фасцикле %s"
 
@@ -476,9 +461,7 @@ msgstr "Неуспешно читање надгледане фасцикле %s
 msgid "Resuming"
 msgstr "Nastavlja se"
 
-#: sabnzbd/downloader.py # sabnzbd/osxmenu.py # sabnzbd/sabtray.py
-#: sabnzbd/sabtraylinux.py # sabnzbd/skintext.py [PP status] # sabnzbd/skintext.py [Priority pick list]
-#: sabnzbd/skintext.py
+#: sabnzbd/downloader.py # sabnzbd/osxmenu.py # sabnzbd/sabtray.py # sabnzbd/sabtraylinux.py # sabnzbd/skintext.py [PP status] # sabnzbd/skintext.py [Priority pick list] # sabnzbd/skintext.py
 msgid "Paused"
 msgstr "Паузирано"
 
@@ -488,6 +471,14 @@ msgstr ""
 "Требате да поставите максимални проток пре него што поставите ограничење"
 
 #: sabnzbd/downloader.py # sabnzbd/downloader.py [Warning message]
+msgid "Cannot connect to server %s [%s]"
+msgstr "Neuspešno povezivanje na server %s[%s]"
+
+#: sabnzbd/downloader.py # sabnzbd/urlgrabber.py
+msgid "Server name does not resolve"
+msgstr "Ime servera se ne može odrediti"
+
+#: sabnzbd/downloader.py [Warning message]
 msgid "Server %s will be ignored for %s minutes"
 msgstr "Server %s će biti ignorisan %s minuta"
 
@@ -507,16 +498,11 @@ msgstr "Moguće deljenje naloga"
 msgid "Failed login for server %s"
 msgstr "Неуспешно пријављивање на сервер %s"
 
-#: sabnzbd/downloader.py # sabnzbd/downloader.py [Warning message]
-#: sabnzbd/downloader.py # sabnzbd/downloader.py [Warning message]
-msgid "Cannot connect to server %s [%s]"
-msgstr "Neuspešno povezivanje na server %s[%s]"
-
 #: sabnzbd/downloader.py [Error message]
 msgid "Connecting %s@%s failed, message=%s"
 msgstr "Povezivanje na %s@%s neuspešno, poruka=%s"
 
-#: sabnzbd/downloader.py # sabnzbd/downloader.py
+#: sabnzbd/downloader.py
 msgid "Server %s requires user/password"
 msgstr "Server %s zahteva koriničko ime/lozinku"
 
@@ -528,7 +514,7 @@ msgstr "Sumnja u grešku u programu za download"
 msgid "Shutting down"
 msgstr "Гашење"
 
-#: sabnzbd/emailer.py # sabnzbd/emailer.py
+#: sabnzbd/emailer.py
 msgid "Failed to connect to mail server"
 msgstr "Неуспешно привезивање на сервер е-поште"
 
@@ -563,6 +549,10 @@ msgstr "Неуспешно затварање везе е-поште"
 #: sabnzbd/emailer.py
 msgid "Email succeeded"
 msgstr "Упешно слање е-поште"
+
+#: sabnzbd/emailer.py # sabnzbd/notifier.py # sabnzbd/rating.py
+msgid "Cannot send, missing required data"
+msgstr "Nemoguće poslati, nedostaju obavezni podaci"
 
 #: sabnzbd/emailer.py [Error message]
 msgid "Cannot find email templates in %s"
@@ -605,12 +595,8 @@ msgstr ""
 "\n"
 
 #: sabnzbd/interface.py
-msgid "Warning: LOCALHOST is ambiguous, use numerical IP-address."
-msgstr "Пажња: LOCALHOST је двосмислен, користите ИП адресе."
-
-#: sabnzbd/interface.py
-msgid "Server address \"%s:%s\" is not valid."
-msgstr "Adresa servera \"%s:%s\" je neispravna"
+msgid "Refused connection with hostname \"%s\" from:"
+msgstr ""
 
 #: sabnzbd/interface.py
 msgid "User logged in to the web interface"
@@ -620,7 +606,7 @@ msgstr ""
 msgid "User logged in"
 msgstr ""
 
-#: sabnzbd/interface.py [Warning message]
+#: sabnzbd/interface.py
 msgid "Missing Session key"
 msgstr "Недостаје кључ сесије"
 
@@ -628,7 +614,7 @@ msgstr "Недостаје кључ сесије"
 msgid "Error: Session Key Required"
 msgstr "Грешка: потребан је кључ сесије"
 
-#: sabnzbd/interface.py [Warning message] # sabnzbd/interface.py
+#: sabnzbd/interface.py
 msgid "Error: Session Key Incorrect"
 msgstr "Грешка: Кључ сесије није добар"
 
@@ -670,7 +656,7 @@ msgstr ""
 msgid "B"
 msgstr "Б"
 
-#: sabnzbd/interface.py # sabnzbd/interface.py
+#: sabnzbd/interface.py
 msgid ""
 "&nbsp<br />SABnzbd shutdown finished.<br />Wait for about 5 second and then "
 "click the button below.<br /><br /><strong><a "
@@ -679,6 +665,14 @@ msgstr ""
 "&nbsp<br />Гашење SABnzbd-а је завршено.<br />Сачекајте око 5 секунди па "
 "кликните на линк испод.<br /><br /><strong><a "
 "href=\"..\">Освежи</a></strong><br />"
+
+#: sabnzbd/interface.py
+msgid "Warning: LOCALHOST is ambiguous, use numerical IP-address."
+msgstr "Пажња: LOCALHOST је двосмислен, користите ИП адресе."
+
+#: sabnzbd/interface.py
+msgid "Server address \"%s:%s\" is not valid."
+msgstr "Adresa servera \"%s:%s\" je neispravna"
 
 #: sabnzbd/interface.py # sabnzbd/skintext.py [Config->RSS, tab header]
 msgid "Feed"
@@ -724,11 +718,16 @@ msgstr "искљ."
 msgid "Undefined server!"
 msgstr "Server nije definisan!"
 
-#: sabnzbd/interface.py # sabnzbd/interface.py
+#: sabnzbd/interface.py
 msgid "Incorrect parameter"
 msgstr "Погрешан параметар"
 
-#: sabnzbd/interface.py # sabnzbd/interface.py
+#: sabnzbd/interface.py
+msgid ""
+"Category folder cannot be a subfolder of the Temporary Download Folder."
+msgstr ""
+
+#: sabnzbd/interface.py
 msgid "Back"
 msgstr "Назад"
 
@@ -736,10 +735,6 @@ msgstr "Назад"
 msgid "ERROR:"
 msgstr "ГРЕШКА:"
 
-#: sabnzbd/interface.py # sabnzbd/interface.py
-#: sabnzbd/interface.py # sabnzbd/interface.py
-#: sabnzbd/interface.py # sabnzbd/interface.py
-#: sabnzbd/interface.py # sabnzbd/interface.py
 #: sabnzbd/interface.py
 msgid "Incorrect value for %s: %s"
 msgstr "Погрешна вредност за %s: %s"
@@ -756,7 +751,7 @@ msgstr "с"
 msgid "m"
 msgstr "м"
 
-#: sabnzbd/misc.py [Error message] # sabnzbd/tvsort.py [Error message]
+#: sabnzbd/misc.py [Error message] # sabnzbd/sorting.py [Error message]
 msgid "Cannot create directory %s"
 msgstr "Немогуће креирати фасциклу %s"
 
@@ -786,14 +781,15 @@ msgstr ""
 msgid "Cannot change permissions of %s"
 msgstr "Не може да се промене дозволе од %s"
 
-#: sabnzbd/newsunpack.py # sabnzbd/newsunpack.py
-#: sabnzbd/newsunpack.py # sabnzbd/newsunpack.py
-#: sabnzbd/postproc.py
+#: sabnzbd/newsunpack.py # sabnzbd/postproc.py
+msgid "Running script"
+msgstr "Покретање скрипта"
+
+#: sabnzbd/newsunpack.py # sabnzbd/postproc.py
 msgid "PostProcessing was aborted (%s)"
 msgstr "Пост-процесирање је заустављено (%s)"
 
-#: sabnzbd/newsunpack.py # sabnzbd/skintext.py [PP phase "script"] # sabnzbd/skintext.py
-#: sabnzbd/skintext.py [Notification Script settings]
+#: sabnzbd/newsunpack.py # sabnzbd/skintext.py [PP phase "script"] # sabnzbd/skintext.py # sabnzbd/skintext.py [Notification Script settings]
 msgid "Script"
 msgstr "Скрипт"
 
@@ -801,7 +797,7 @@ msgstr "Скрипт"
 msgid "Unpack nesting too deep [%s]"
 msgstr "Previše ugnježdenih nivoa pri raspakivanju [%s]"
 
-#: sabnzbd/newsunpack.py # sabnzbd/newsunpack.py
+#: sabnzbd/newsunpack.py
 msgid "Joining"
 msgstr "Спајање"
 
@@ -809,15 +805,15 @@ msgstr "Спајање"
 msgid "Incomplete sequence of joinable files"
 msgstr "Непотпуна секвенца датотеке за спајање"
 
-#: sabnzbd/newsunpack.py # sabnzbd/newsunpack.py
+#: sabnzbd/newsunpack.py
 msgid "File join of %s failed"
 msgstr "Спој датотеке %s није успело"
 
-#: sabnzbd/newsunpack.py # sabnzbd/newsunpack.py
+#: sabnzbd/newsunpack.py
 msgid "[%s] Error \"%s\" while joining files"
 msgstr "[%s] Грешка \"%s\" при споја датотеке"
 
-#: sabnzbd/newsunpack.py [Error message] # sabnzbd/newsunpack.py [Error message]
+#: sabnzbd/newsunpack.py [Error message]
 msgid "Error \"%s\" while running file_join on %s"
 msgstr "Грешка \"%s\" док сам покренуо 'file_join' на %s"
 
@@ -825,7 +821,7 @@ msgstr "Грешка \"%s\" док сам покренуо 'file_join' на %s"
 msgid "[%s] Joined %s files"
 msgstr "[%s] Спојено %s датотеке(а)"
 
-#: sabnzbd/newsunpack.py # sabnzbd/newsunpack.py
+#: sabnzbd/newsunpack.py
 msgid "Unpacking failed, %s"
 msgstr "Neuspešno raspakivanje, %s"
 
@@ -837,9 +833,6 @@ msgstr "[%s] Greška \"%s\" pri raspakivanju RAR datoteka"
 msgid "Error \"%s\" while running rar_unpack on %s"
 msgstr "Грешка \"%s\" док сам радио 'rar_unpack' на %s"
 
-#: sabnzbd/newsunpack.py [Warning message] # sabnzbd/newsunpack.py [Warning message]
-#: sabnzbd/newsunpack.py [Warning message] # sabnzbd/newsunpack.py [Warning message]
-#: sabnzbd/newsunpack.py [Warning message] # sabnzbd/newsunpack.py [Warning message]
 #: sabnzbd/newsunpack.py [Warning message]
 msgid "Deleting %s failed!"
 msgstr "Neuspešno brisanje %s!"
@@ -849,12 +842,10 @@ msgid "Trying unrar with password \"%s\""
 msgstr "Proba raspakivanja sa lozinkom \"%s\""
 
 #: sabnzbd/newsunpack.py [Error message] # sabnzbd/newsunpack.py
-#: sabnzbd/newsunpack.py # sabnzbd/newsunpack.py
 msgid "Unpacking failed, archive requires a password"
 msgstr "Neuspešno raspakivanje, arhiva zahteva lozinku"
 
-#: sabnzbd/newsunpack.py # sabnzbd/newsunpack.py
-#: sabnzbd/newsunpack.py # sabnzbd/newsunpack.py
+#: sabnzbd/newsunpack.py
 msgid "Unpacking"
 msgstr "Распакивање"
 
@@ -862,7 +853,7 @@ msgstr "Распакивање"
 msgid "Unpack"
 msgstr "Распакуј"
 
-#: sabnzbd/newsunpack.py # sabnzbd/newsunpack.py
+#: sabnzbd/newsunpack.py
 msgid "Unpacking failed, unable to find %s"
 msgstr "Погрешно распакивање, не може да се нађе %s"
 
@@ -878,7 +869,7 @@ msgstr "Neuspešno raspakivanje, CRC greška"
 msgid "ERROR: CRC failed in \"%s\""
 msgstr "ГРЕШКА: Погрешан CRC у \"%s\""
 
-#: sabnzbd/newsunpack.py # sabnzbd/newsunpack.py
+#: sabnzbd/newsunpack.py
 msgid "Unpacking failed, file too large for filesystem (FAT?)"
 msgstr ""
 
@@ -886,16 +877,15 @@ msgstr ""
 msgid "ERROR: File too large for filesystem (%s)"
 msgstr ""
 
-#: sabnzbd/newsunpack.py # sabnzbd/newsunpack.py
-#: sabnzbd/newsunpack.py # sabnzbd/newsunpack.py
+#: sabnzbd/newsunpack.py
 msgid "Unpacking failed, write error or disk is full?"
 msgstr "Neuspašno raspakivanje, greška u pisanju ili je disk pun?"
 
-#: sabnzbd/newsunpack.py [Error message] # sabnzbd/newsunpack.py [Error message]
+#: sabnzbd/newsunpack.py [Error message]
 msgid "ERROR: write error (%s)"
 msgstr "ГРЕШКА: грешка писања (%s)"
 
-#: sabnzbd/newsunpack.py # sabnzbd/newsunpack.py
+#: sabnzbd/newsunpack.py
 msgid "Unpacking failed, path is too long"
 msgstr "Neuspešno raspakivanje, putanja je predugačka"
 
@@ -911,15 +901,15 @@ msgstr "Neuspešno raspakivanje, videti izveštaj"
 msgid "ERROR: %s"
 msgstr "ГРЕШКА: %s"
 
-#: sabnzbd/newsunpack.py # sabnzbd/newsunpack.py
+#: sabnzbd/newsunpack.py
 msgid "Unusable RAR file"
 msgstr "Neupotrebljiva RAR datoteka"
 
-#: sabnzbd/newsunpack.py # sabnzbd/newsunpack.py
+#: sabnzbd/newsunpack.py
 msgid "Corrupt RAR file"
 msgstr ""
 
-#: sabnzbd/newsunpack.py # sabnzbd/newsunpack.py
+#: sabnzbd/newsunpack.py
 msgid "%s files in %s"
 msgstr "%s датотека у %s"
 
@@ -943,9 +933,7 @@ msgstr "Не могу да издвојим %s"
 msgid "Quick Checking"
 msgstr "Брза Провера"
 
-#: sabnzbd/newsunpack.py # sabnzbd/newsunpack.py
-#: sabnzbd/newsunpack.py # sabnzbd/newsunpack.py
-#: sabnzbd/skintext.py [PP phase "repair"] # sabnzbd/skintext.py
+#: sabnzbd/newsunpack.py # sabnzbd/skintext.py [PP phase "repair"] # sabnzbd/skintext.py
 msgid "Repair"
 msgstr "Поправи"
 
@@ -957,12 +945,7 @@ msgstr "[%s] Брза Провера ОК"
 msgid "Starting Repair"
 msgstr "Покретање пооправљања"
 
-#: sabnzbd/newsunpack.py [Warning message]
-msgid "Par verify failed on %s, while QuickCheck succeeded!"
-msgstr "Par provera neuspešna na %s, dok je QuickCheck uspešan!"
-
-#: sabnzbd/newsunpack.py # sabnzbd/newsunpack.py
-#: sabnzbd/newsunpack.py # sabnzbd/newsunpack.py
+#: sabnzbd/newsunpack.py
 msgid "Repairing failed, %s"
 msgstr "Neuspešna popravka, %s"
 
@@ -974,72 +957,62 @@ msgstr "Грешка %s при покретања 'par2_repair' на скупу 
 msgid "Error \"%s\" while running par2_repair on set %s"
 msgstr "Грешка \"%s\" при покретања 'par2_repair' на скупу %s"
 
-#: sabnzbd/newsunpack.py # sabnzbd/newsunpack.py
+#: sabnzbd/newsunpack.py
 msgid ""
 "[%s] PAR2 received incorrect options, check your Config->Switches settings"
 msgstr ""
 "[%s] 'PAR2' је примио погрешне опције, проверите параметри Подешавање-"
 ">Прекидачи"
 
-#: sabnzbd/newsunpack.py # sabnzbd/newsunpack.py
+#: sabnzbd/newsunpack.py
 msgid "[%s] Verified in %s, all files correct"
 msgstr "[%s] Проверено за %s, све датотеке су добре"
 
-#: sabnzbd/newsunpack.py # sabnzbd/newsunpack.py
+#: sabnzbd/newsunpack.py
 msgid "[%s] Verified in %s, repair is required"
 msgstr "[%s] Проверено за %s, потребна је поправка"
 
-#: sabnzbd/newsunpack.py # sabnzbd/newsunpack.py
-msgid "Main packet not found..."
-msgstr "Главни пакет није нађен..."
-
-#: sabnzbd/newsunpack.py # sabnzbd/newsunpack.py
+#: sabnzbd/newsunpack.py
 msgid ""
 "Invalid par2 files or invalid PAR2 parameters, cannot verify or repair"
 msgstr ""
 
-#: sabnzbd/newsunpack.py # sabnzbd/newsunpack.py
+#: sabnzbd/newsunpack.py
 msgid "Fetching %s blocks..."
 msgstr "Учитавање %s блокова..."
 
-#: sabnzbd/newsunpack.py # sabnzbd/newsunpack.py
+#: sabnzbd/newsunpack.py
 msgid "Fetching"
 msgstr "Добављам"
 
-#: sabnzbd/newsunpack.py # sabnzbd/newsunpack.py
+#: sabnzbd/newsunpack.py
 msgid "Repair failed, not enough repair blocks (%s short)"
 msgstr "Погрешна поправка, нема довољно блокова за поправку (фали %s)"
 
-#: sabnzbd/newsunpack.py # sabnzbd/newsunpack.py
-#: sabnzbd/newsunpack.py # sabnzbd/newsunpack.py
+#: sabnzbd/newsunpack.py
 msgid "Repairing"
 msgstr "Поправљање"
 
-#: sabnzbd/newsunpack.py # sabnzbd/newsunpack.py
+#: sabnzbd/newsunpack.py
 msgid "[%s] Repaired in %s"
 msgstr "[%s] Поправљено за %s"
 
-#: sabnzbd/newsunpack.py # sabnzbd/newsunpack.py
 #: sabnzbd/newsunpack.py
 msgid "Verifying repair"
 msgstr ""
 
-#: sabnzbd/newsunpack.py # sabnzbd/newsunpack.py
-#: sabnzbd/notifier.py [Notification]
+#: sabnzbd/newsunpack.py # sabnzbd/notifier.py [Notification]
 msgid "Disk full"
 msgstr "Диск је пун"
 
-#: sabnzbd/newsunpack.py # sabnzbd/newsunpack.py
-#: sabnzbd/newsunpack.py # sabnzbd/newsunpack.py
-#: sabnzbd/newsunpack.py # sabnzbd/newsunpack.py
+#: sabnzbd/newsunpack.py
 msgid "Verifying"
 msgstr "Проверавање"
 
-#: sabnzbd/newsunpack.py # sabnzbd/newsunpack.py
+#: sabnzbd/newsunpack.py
 msgid "Checking extra files"
 msgstr ""
 
-#: sabnzbd/newsunpack.py # sabnzbd/newsunpack.py
 #: sabnzbd/newsunpack.py # sabnzbd/skintext.py [PP status]
 msgid "Checking"
 msgstr "Провера"
@@ -1102,11 +1075,6 @@ msgstr "Остале поруке"
 msgid "Not available"
 msgstr "Недоступно"
 
-#: sabnzbd/notifier.py # sabnzbd/notifier.py # sabnzbd/notifier.py
-#: sabnzbd/notifier.py # sabnzbd/rating.py # sabnzbd/rating.py
-msgid "Cannot send, missing required data"
-msgstr "Nemoguće poslati, nedostaju obavezni podaci"
-
 #: sabnzbd/notifier.py [Warning message] # sabnzbd/notifier.py
 msgid "Failed to send Prowl message"
 msgstr "Неуспешно слање Prowl поруке"
@@ -1115,7 +1083,7 @@ msgstr "Неуспешно слање Prowl поруке"
 msgid "Bad response from Pushover (%s): %s"
 msgstr "Neodgovarajući odgovor od strane Pushover (%s): %s"
 
-#: sabnzbd/notifier.py [Warning message] # sabnzbd/notifier.py
+#: sabnzbd/notifier.py # sabnzbd/notifier.py [Warning message]
 msgid "Failed to send pushover message"
 msgstr "Neuspešno slanje Pushover poruke"
 
@@ -1135,7 +1103,7 @@ msgstr ""
 msgid "Notification script \"%s\" does not exist"
 msgstr ""
 
-#: sabnzbd/notifier.py # sabnzbd/notifier.py
+#: sabnzbd/notifier.py
 msgid "Failed to send Windows notification"
 msgstr ""
 
@@ -1163,7 +1131,7 @@ msgstr "NZB додат у ред"
 msgid "%s -> Unknown encoding"
 msgstr "%s -> Непознато енкодирање"
 
-#: sabnzbd/nzbstuff.py [Warning message]
+#: sabnzbd/nzbstuff.py
 msgid "File %s is empty, skipping"
 msgstr "Датотека %s је празна, прескакање"
 
@@ -1175,11 +1143,11 @@ msgstr "Неуспешан унос %s датотеке са %s"
 msgid "Incomplete NZB file %s"
 msgstr "Непотпуна НЗБ датотека %s"
 
-#: sabnzbd/nzbstuff.py [Warning message] # sabnzbd/nzbstuff.py [Warning message]
+#: sabnzbd/nzbstuff.py [Warning message]
 msgid "Invalid NZB file %s, skipping (reason=%s, line=%s)"
 msgstr "Неважећи NZB %s, прескакање (разлог=%s, линија=%s)"
 
-#: sabnzbd/nzbstuff.py # sabnzbd/nzbstuff.py
+#: sabnzbd/nzbstuff.py
 msgid "Empty NZB file %s"
 msgstr "Празан NZB %s"
 
@@ -1267,13 +1235,11 @@ msgstr "%s артикла су уклоњени"
 msgid "Error importing %s"
 msgstr "Грешка увоза %s"
 
-#: sabnzbd/osxmenu.py # sabnzbd/osxmenu.py # sabnzbd/osxmenu.py
-#: sabnzbd/skintext.py [Footer: indicator of warnings] # sabnzbd/skintext.py
+#: sabnzbd/osxmenu.py # sabnzbd/skintext.py [Footer: indicator of warnings] # sabnzbd/skintext.py
 msgid "Warnings"
 msgstr "Упозорења"
 
-#: sabnzbd/osxmenu.py # sabnzbd/osxmenu.py # sabnzbd/sabtray.py
-#: sabnzbd/sabtraylinux.py # sabnzbd/skintext.py
+#: sabnzbd/osxmenu.py # sabnzbd/sabtray.py # sabnzbd/sabtraylinux.py # sabnzbd/skintext.py
 msgid "Idle"
 msgstr "Мирoвање"
 
@@ -1301,9 +1267,7 @@ msgstr "Очисти хронологију"
 msgid "Limit Speed"
 msgstr "Ограничење брзине"
 
-#: sabnzbd/osxmenu.py # sabnzbd/sabtray.py # sabnzbd/sabtraylinux.py
-#: sabnzbd/skintext.py [#: Config->Scheduler] # sabnzbd/skintext.py [Pause downloading] # sabnzbd/skintext.py [Four way switch for duplicates]
-#: sabnzbd/skintext.py [Config->Scheduling]
+#: sabnzbd/osxmenu.py # sabnzbd/sabtray.py # sabnzbd/sabtraylinux.py # sabnzbd/skintext.py [Pause downloading] # sabnzbd/skintext.py [Four way switch for duplicates] # sabnzbd/skintext.py [Config->Scheduling]
 msgid "Pause"
 msgstr "Пауза"
 
@@ -1311,8 +1275,7 @@ msgstr "Пауза"
 msgid "min."
 msgstr "мин."
 
-#: sabnzbd/osxmenu.py # sabnzbd/sabtray.py # sabnzbd/sabtraylinux.py
-#: sabnzbd/skintext.py [#: Config->Scheduler] # sabnzbd/skintext.py [Resume downloading] # sabnzbd/skintext.py [Config->Scheduling]
+#: sabnzbd/osxmenu.py # sabnzbd/sabtray.py # sabnzbd/sabtraylinux.py # sabnzbd/skintext.py [Resume downloading] # sabnzbd/skintext.py [Config->Scheduling]
 msgid "Resume"
 msgstr "Настави"
 
@@ -1324,11 +1287,11 @@ msgstr "Скенирај надгледану фасциклу"
 msgid "Read all RSS feeds"
 msgstr "Pročitani svi RSS kanali"
 
-#: sabnzbd/osxmenu.py # sabnzbd/osxmenu.py
+#: sabnzbd/osxmenu.py
 msgid "Complete Folder"
 msgstr "Комплетна фасцикла"
 
-#: sabnzbd/osxmenu.py # sabnzbd/osxmenu.py
+#: sabnzbd/osxmenu.py
 msgid "Incomplete Folder"
 msgstr "Некомплетна фасцикла"
 
@@ -1336,9 +1299,7 @@ msgstr "Некомплетна фасцикла"
 msgid "Troubleshoot"
 msgstr "Реши проблем"
 
-#: sabnzbd/osxmenu.py # sabnzbd/osxmenu.py # sabnzbd/sabtray.py
-#: sabnzbd/sabtraylinux.py # sabnzbd/sabtraylinux.py
-#: sabnzbd/skintext.py [#: Config->Scheduler] # sabnzbd/skintext.py # sabnzbd/skintext.py [Config->Scheduling]
+#: sabnzbd/osxmenu.py # sabnzbd/sabtray.py # sabnzbd/sabtraylinux.py # sabnzbd/skintext.py # sabnzbd/skintext.py [Config->Scheduling]
 msgid "Restart"
 msgstr "Поново покрени"
 
@@ -1354,7 +1315,7 @@ msgstr "Излаз"
 msgid "Queue First 10 Items"
 msgstr "У ред прве 10 ставке"
 
-#: sabnzbd/osxmenu.py # sabnzbd/osxmenu.py
+#: sabnzbd/osxmenu.py
 msgid "Empty"
 msgstr "Празно"
 
@@ -1370,8 +1331,6 @@ msgstr "Ново издање је доступно"
 msgid "Go to wizard"
 msgstr "Покрени асистент"
 
-#: sabnzbd/osxmenu.py # sabnzbd/osxmenu.py # sabnzbd/osxmenu.py
-#: sabnzbd/osxmenu.py # sabnzbd/osxmenu.py # sabnzbd/osxmenu.py
 #: sabnzbd/osxmenu.py
 msgid "Stopping..."
 msgstr "Заустављам..."
@@ -1485,7 +1444,7 @@ msgid ""
 "SABnzbd is already running."
 msgstr ""
 
-#: sabnzbd/panic.py # sabnzbd/panic.py
+#: sabnzbd/panic.py
 msgid "Fatal error"
 msgstr "Фатална грешка"
 
@@ -1507,6 +1466,12 @@ msgid ""
 "size to 4GB"
 msgstr ""
 
+#: sabnzbd/postproc.py [Warning message]
+msgid ""
+"Module subprocessww missing. Expect problems with Unicoded file and "
+"directory names in downloads."
+msgstr ""
+
 #: sabnzbd/postproc.py
 msgid "Download might fail, only %s of required %s available"
 msgstr "Преузимање је можда погрешно. има %s од потребних %s"
@@ -1514,10 +1479,6 @@ msgstr "Преузимање је можда погрешно. има %s од п
 #: sabnzbd/postproc.py
 msgid "Download failed - Not on your server(s)"
 msgstr "Неуспешно преузимање - није на вашем серверу"
-
-#: sabnzbd/postproc.py
-msgid "No post-processing because of failed verification"
-msgstr "Нема пост-процесирање пошто провера није успела"
 
 #: sabnzbd/postproc.py
 msgid "Moving"
@@ -1534,10 +1495,6 @@ msgstr "Грешка преименовања \"%s\" у \"%s\""
 #: sabnzbd/postproc.py
 msgid "Failed to move files"
 msgstr "Неуспешно премештање датотека"
-
-#: sabnzbd/postproc.py
-msgid "Running script"
-msgstr "Покретање скрипта"
 
 #: sabnzbd/postproc.py
 msgid "Running user script %s"
@@ -1559,11 +1516,11 @@ msgstr "Више"
 msgid "Post Processing Failed for %s (%s)"
 msgstr "Грешка пост-процесирања за %s (%s)"
 
-#: sabnzbd/postproc.py
+#: sabnzbd/postproc.py [Error message] # sabnzbd/postproc.py
 msgid "see logfile"
 msgstr "видети извештај"
 
-#: sabnzbd/postproc.py # sabnzbd/postproc.py
+#: sabnzbd/postproc.py
 msgid "Download Failed"
 msgstr "Неуспешно преузимање"
 
@@ -1591,7 +1548,7 @@ msgstr "Пост-процесирање"
 msgid "[%s] No par2 sets"
 msgstr "[%s] Нема par2 датотеке"
 
-#: sabnzbd/postproc.py # sabnzbd/postproc.py
+#: sabnzbd/postproc.py
 msgid "Trying SFV verification"
 msgstr "Pokušaj SFV provere"
 
@@ -1603,15 +1560,15 @@ msgstr "Неке датотеке нису проверене \"%s\""
 msgid "Verified successfully using SFV files"
 msgstr "Успешна провера преко СФВ"
 
-#: sabnzbd/postproc.py # sabnzbd/postproc.py
+#: sabnzbd/postproc.py
 msgid "Trying RAR-based verification"
 msgstr ""
 
-#: sabnzbd/postproc.py # sabnzbd/postproc.py
+#: sabnzbd/postproc.py
 msgid "[%s] RAR-based verification failed: %s"
 msgstr ""
 
-#: sabnzbd/postproc.py # sabnzbd/skintext.py # sabnzbd/skintext.py
+#: sabnzbd/postproc.py # sabnzbd/skintext.py
 msgid "Passworded"
 msgstr "Zahteva lozinku"
 
@@ -1623,7 +1580,7 @@ msgstr ""
 msgid "RAR files failed to verify"
 msgstr ""
 
-#: sabnzbd/postproc.py [Error message] # sabnzbd/postproc.py [Error message]
+#: sabnzbd/postproc.py [Error message]
 msgid "Removing %s failed"
 msgstr "Brisanje %s neuspešno"
 
@@ -1631,7 +1588,7 @@ msgstr "Brisanje %s neuspešno"
 msgid "Failed to hibernate system"
 msgstr "Неуспешна хибернација система"
 
-#: sabnzbd/powersup.py [Error message] # sabnzbd/powersup.py [Error message]
+#: sabnzbd/powersup.py [Error message]
 msgid "Failed to standby system"
 msgstr "Неуспено постављање система у стању приправности"
 
@@ -1647,7 +1604,7 @@ msgstr "Indekser id (%s) nije pronađen za datoteku ocenjivanja"
 msgid "Server address"
 msgstr "Адреса сервера"
 
-#: sabnzbd/rating.py # sabnzbd/skintext.py # sabnzbd/skintext.py
+#: sabnzbd/rating.py # sabnzbd/skintext.py
 msgid "API Key"
 msgstr "API кључ"
 
@@ -1661,7 +1618,7 @@ msgstr ""
 msgid "Incorrect RSS feed description \"%s\""
 msgstr "Погрешан опис RSS фида \"%s\""
 
-#: sabnzbd/rss.py # sabnzbd/rss.py
+#: sabnzbd/rss.py
 msgid "Failed to retrieve RSS from %s: %s"
 msgstr "Неуспешно преузимање RSS од %s: %s"
 
@@ -1681,7 +1638,7 @@ msgstr "Server %s koristi nepouzdan HTTPS sertifikat"
 msgid "RSS Feed %s was empty"
 msgstr "RSS фид %s је празан"
 
-#: sabnzbd/rss.py # sabnzbd/rss.py
+#: sabnzbd/rss.py
 msgid "Incompatible feed"
 msgstr "Некомпатибилан Фид"
 
@@ -1697,9 +1654,7 @@ msgstr "Pokaži interfejs"
 msgid "Open complete folder"
 msgstr "Otvori fasciklu završenih"
 
-#: sabnzbd/sabtray.py # sabnzbd/sabtraylinux.py
-#: sabnzbd/sabtraylinux.py # sabnzbd/skintext.py [#: Config->Scheduler] # sabnzbd/skintext.py [Shutdown SABnzbd]
-#: sabnzbd/skintext.py [Config->Scheduling]
+#: sabnzbd/sabtray.py # sabnzbd/sabtraylinux.py # sabnzbd/skintext.py [Shutdown SABnzbd] # sabnzbd/skintext.py [Config->Scheduling]
 msgid "Shutdown"
 msgstr "Угаси"
 
@@ -1707,7 +1662,7 @@ msgstr "Угаси"
 msgid "Remaining"
 msgstr "Преостало"
 
-#: sabnzbd/sabtraylinux.py # sabnzbd/skintext.py # sabnzbd/skintext.py
+#: sabnzbd/sabtraylinux.py # sabnzbd/skintext.py
 msgid "Add NZB"
 msgstr "Додај NZB"
 
@@ -1719,7 +1674,7 @@ msgstr "Лоша планификација %s у %s:%s"
 msgid "Unknown action: %s"
 msgstr "Непозната акција: %s"
 
-#: sabnzbd/scheduler.py [Warning message] # sabnzbd/scheduler.py [Warning message]
+#: sabnzbd/scheduler.py [Warning message]
 msgid "Schedule for non-existing server %s"
 msgstr "Планификација за непостојећи сервер %s"
 
@@ -1783,21 +1738,9 @@ msgstr "Проверавање..."
 msgid "Downloading"
 msgstr "Преузимам"
 
-#: sabnzbd/skintext.py # sabnzbd/skintext.py
+#: sabnzbd/skintext.py
 msgid "Propagation delay"
 msgstr ""
-
-#: sabnzbd/skintext.py [#: Config->Scheduler] # sabnzbd/skintext.py [Config->Scheduling]
-msgid "Frequency"
-msgstr "Фреквенција"
-
-#: sabnzbd/skintext.py [#: Config->Scheduler] # sabnzbd/skintext.py [Config->Scheduling] # sabnzbd/skintext.py [Job details page, section header]
-msgid "Action"
-msgstr "Акција"
-
-#: sabnzbd/skintext.py [#: Config->Scheduler] # sabnzbd/skintext.py [Config->Scheduling]
-msgid "Arguments"
-msgstr "Аргументи"
 
 #: sabnzbd/skintext.py [#: Config->Scheduler]
 msgid "Task"
@@ -1879,7 +1822,7 @@ msgstr ""
 msgid "Resume jobs with category"
 msgstr ""
 
-#: sabnzbd/skintext.py [Prowl priority] # sabnzbd/skintext.py [Prowl priority] # sabnzbd/skintext.py [Three way switch for duplicates]
+#: sabnzbd/skintext.py [Prowl priority] # sabnzbd/skintext.py [Three way switch for duplicates]
 msgid "Off"
 msgstr "Искључено"
 
@@ -1891,11 +1834,11 @@ msgstr "Врло ниско"
 msgid "Moderate"
 msgstr "Умерено"
 
-#: sabnzbd/skintext.py [Prowl priority] # sabnzbd/skintext.py [Priority pick list]
+#: sabnzbd/skintext.py [Prowl priority] # sabnzbd/skintext.py [Priority pick list] # sabnzbd/skintext.py
 msgid "Normal"
 msgstr "Нормалан"
 
-#: sabnzbd/skintext.py [Prowl priority] # sabnzbd/skintext.py [Prowl priority] # sabnzbd/skintext.py [Priority pick list]
+#: sabnzbd/skintext.py [Prowl priority] # sabnzbd/skintext.py [Priority pick list] # sabnzbd/skintext.py
 msgid "High"
 msgstr "Висок"
 
@@ -1903,7 +1846,7 @@ msgstr "Висок"
 msgid "Emergency"
 msgstr "Хитно"
 
-#: sabnzbd/skintext.py [Prowl priority] # sabnzbd/skintext.py [Priority pick list]
+#: sabnzbd/skintext.py [Prowl priority] # sabnzbd/skintext.py [Priority pick list] # sabnzbd/skintext.py
 msgid "Low"
 msgstr "Низак"
 
@@ -2015,15 +1958,15 @@ msgstr "Дан у месецу"
 msgid "This week"
 msgstr "Ове седмице"
 
-#: sabnzbd/skintext.py # sabnzbd/skintext.py
+#: sabnzbd/skintext.py
 msgid "This month"
 msgstr "Овог месеца"
 
-#: sabnzbd/skintext.py # sabnzbd/skintext.py
+#: sabnzbd/skintext.py
 msgid "Today"
 msgstr "Данас"
 
-#: sabnzbd/skintext.py # sabnzbd/skintext.py
+#: sabnzbd/skintext.py
 msgid "Total"
 msgstr "Укупно"
 
@@ -2107,8 +2050,7 @@ msgstr "Alatka za automatizovano preuzimanje sa usenet-a"
 msgid "Save"
 msgstr "Сачувај"
 
-#: sabnzbd/skintext.py [Used in confirmation popups] # sabnzbd/skintext.py # sabnzbd/skintext.py
-#: sabnzbd/skintext.py # sabnzbd/skintext.py
+#: sabnzbd/skintext.py [Used in confirmation popups] # sabnzbd/skintext.py
 msgid "Are you sure?"
 msgstr "Да ли сте сигурни?"
 
@@ -2176,7 +2118,7 @@ msgstr "Обавештења"
 msgid "Email"
 msgstr "Е-пошта"
 
-#: sabnzbd/skintext.py [Main menu item] # sabnzbd/skintext.py
+#: sabnzbd/skintext.py [Main menu item]
 msgid "Categories"
 msgstr "Категорије"
 
@@ -2448,6 +2390,12 @@ msgstr "Neki drugi problem"
 msgid "Force Disconnect"
 msgstr "Натерај искључење"
 
+#: sabnzbd/skintext.py [Status page button text]
+msgid ""
+"Disconnect all active connections to usenet servers. Connections will be "
+"reopened after a few seconds if there are items in the queue."
+msgstr ""
+
 #: sabnzbd/skintext.py
 msgid "This will send a test email to your account."
 msgstr "То ће послати пробну е-поруку Вашем малогу."
@@ -2569,6 +2517,16 @@ msgid "Repeat test"
 msgstr "Ponovi test"
 
 #: sabnzbd/skintext.py
+msgid "Test download"
+msgstr ""
+
+#: sabnzbd/skintext.py
+msgid ""
+"Adds a verified test NZB of the specified size, filled with random data. Can "
+"be used to verify your setup."
+msgstr ""
+
+#: sabnzbd/skintext.py
 msgid "Config File"
 msgstr "; Датотека подешавања"
 
@@ -2610,7 +2568,7 @@ msgstr ""
 "То поново покреће SABnzbd и ради пуну<br />реконструкцију садржаја реда, "
 "чувајући већ преузете датотеке.<br />То мења ред реда."
 
-#: sabnzbd/skintext.py # sabnzbd/skintext.py
+#: sabnzbd/skintext.py
 msgid "Changes have not been saved, and will be lost."
 msgstr "Промене су изгубљене јер нису сачуване."
 
@@ -2657,7 +2615,6 @@ msgstr "; Ради"
 msgid "Backup"
 msgstr "Резервно"
 
-#: sabnzbd/skintext.py # sabnzbd/skintext.py # sabnzbd/skintext.py
 #: sabnzbd/skintext.py # sabnzbd/skintext.py [Notification Script settings]
 msgid "Read the Wiki Help on this!"
 msgstr "За више информација, читајте Вики!"
@@ -2690,7 +2647,7 @@ msgstr "SABnzbd Порт"
 msgid "Port SABnzbd should listen on."
 msgstr "Порт на који SABnzbd чека везе."
 
-#: sabnzbd/skintext.py # sabnzbd/skintext.py
+#: sabnzbd/skintext.py
 msgid "Web Interface"
 msgstr "Веб интерфејс"
 
@@ -2862,7 +2819,7 @@ msgstr "Сачувај промене"
 msgid "Restore Defaults"
 msgstr ""
 
-#: sabnzbd/skintext.py # sabnzbd/skintext.py
+#: sabnzbd/skintext.py
 msgid "Reset"
 msgstr "Ресетуј"
 
@@ -2958,7 +2915,7 @@ msgstr ""
 msgid "User Folders"
 msgstr "Корисничке фасцикле"
 
-#: sabnzbd/skintext.py # sabnzbd/skintext.py
+#: sabnzbd/skintext.py
 msgid "Browse"
 msgstr "Pregledaj"
 
@@ -3294,6 +3251,10 @@ msgid "IONice Parameters"
 msgstr "Параметри 'IONice'"
 
 #: sabnzbd/skintext.py
+msgid "External process priority"
+msgstr ""
+
+#: sabnzbd/skintext.py
 msgid "Disconnect on Empty Queue"
 msgstr "Заустави везу када је ред празан"
 
@@ -3458,7 +3419,7 @@ msgstr ""
 msgid "Increase performance by forcing a lower SSL encryption strength."
 msgstr ""
 
-#: sabnzbd/skintext.py
+#: sabnzbd/skintext.py # sabnzbd/urlgrabber.py
 msgid "Maximum retries"
 msgstr "Макс покушаја"
 
@@ -3533,20 +3494,20 @@ msgid "Comma separated list"
 msgstr "Lista razdvojena zarezom"
 
 #: sabnzbd/skintext.py
-msgid "Server load-balancing"
-msgstr "Balansiranje opterećenja servera"
+msgid "Server IP address selection"
+msgstr ""
 
 #: sabnzbd/skintext.py
-msgid "Prevent load-balancing"
-msgstr "Onemogući balansiranje opterećenja"
+msgid "First IP address"
+msgstr ""
 
 #: sabnzbd/skintext.py
-msgid "Allow load-balancing"
-msgstr "Omogući balansiranje opterećenja"
+msgid "Randomly selected IP address"
+msgstr ""
 
 #: sabnzbd/skintext.py
-msgid "Allow load-balancing with optimization for IPv6"
-msgstr "Omogući balansiranje opterećenja sa optimizacijom za IPv6"
+msgid "Quickest IP address, preferring IPv6"
+msgstr ""
 
 #: sabnzbd/skintext.py
 msgid "Useful if a newsserver has more than one IPv4/IPv6 address"
@@ -3598,7 +3559,7 @@ msgid ""
 "certificates. Strict: verify and enforce matching hostname."
 msgstr ""
 
-#: sabnzbd/skintext.py # sabnzbd/skintext.py # sabnzbd/skintext.py
+#: sabnzbd/skintext.py
 msgid "Disabled"
 msgstr "Онемогућено"
 
@@ -3612,7 +3573,7 @@ msgstr ""
 
 #: sabnzbd/skintext.py [Explain server priority]
 msgid "0 is highest priority, 100 is the lowest priority"
-msgstr "0 je najveći prioritet, 100 je najniži prioritet"
+msgstr "0 je najveći prioritet, 99 je najniži prioritet"
 
 #: sabnzbd/skintext.py [Server optional tickbox]
 msgid "Optional"
@@ -3655,23 +3616,24 @@ msgid "Send group command before requesting articles."
 msgstr "Послати команду 'group' пре тражења артикла."
 
 #: sabnzbd/skintext.py
-msgid "Only use this server for these categories."
-msgstr "Koristi ovaj server samo za sledeće kategorije"
-
-#: sabnzbd/skintext.py
-msgid ""
-"None of the enabled servers have the 'Default' category selected. Jobs in "
-"the queue that are not assigned to one of the server's categories will not "
-"be downloaded."
-msgstr ""
-
-#: sabnzbd/skintext.py
 msgid "Personal notes"
 msgstr "Lične zabeleške"
 
-#: sabnzbd/skintext.py [Config->Scheduling] # sabnzbd/skintext.py [Config->Scheduling]
+#: sabnzbd/skintext.py [Config->Scheduling]
 msgid "Add Schedule"
 msgstr "Dodaj raspored"
+
+#: sabnzbd/skintext.py [Config->Scheduling]
+msgid "Frequency"
+msgstr "Фреквенција"
+
+#: sabnzbd/skintext.py [Config->Scheduling] # sabnzbd/skintext.py [Job details page, section header]
+msgid "Action"
+msgstr "Акција"
+
+#: sabnzbd/skintext.py [Config->Scheduling]
+msgid "Arguments"
+msgstr "Аргументи"
 
 #: sabnzbd/skintext.py [Config->Scheduling]
 msgid "Current Schedules"
@@ -3833,10 +3795,6 @@ msgid "Enable Growl"
 msgstr "Упали „Growl“"
 
 #: sabnzbd/skintext.py [Don't translate "Growl"]
-msgid "Send notifications to Growl"
-msgstr "Пошаљи обавештења у „Growl“"
-
-#: sabnzbd/skintext.py [Don't translate "Growl"]
 msgid "Only use for remote Growl server (host:port)"
 msgstr "Користи само удаљен „Growl“ сервер (хост:порт)"
 
@@ -3852,17 +3810,9 @@ msgstr "Опциона лозинка за „Growl“ сервер"
 msgid "Enable NotifyOSD"
 msgstr "Упали „NotifyOSD“"
 
-#: sabnzbd/skintext.py [Don't translate "NotifyOSD"]
-msgid "Send notifications to NotifyOSD"
-msgstr "Шаљи обавештења у „NotifyOSD“"
-
 #: sabnzbd/skintext.py # sabnzbd/skintext.py [Header for OSX Notfication Center section]
 msgid "Notification Center"
 msgstr "Центар за обавештења"
-
-#: sabnzbd/skintext.py
-msgid "Send notifications to Notification Center"
-msgstr "Пошаљи нотификације у Центру нотификације"
 
 #: sabnzbd/skintext.py
 msgid "Enable Windows Notifications"
@@ -3931,6 +3881,22 @@ msgstr "Uređaj(i)"
 #: sabnzbd/skintext.py [Pushover settings]
 msgid "Device(s) to which message should be sent"
 msgstr "Uređaj(i) na koje bi poruke trebale biti poslate"
+
+#: sabnzbd/skintext.py [Pushover settings]
+msgid "Emergency retry"
+msgstr ""
+
+#: sabnzbd/skintext.py [Pushover settings]
+msgid "How often (in seconds) the same notification will be sent"
+msgstr ""
+
+#: sabnzbd/skintext.py [Pushover settings]
+msgid "Emergency expire"
+msgstr ""
+
+#: sabnzbd/skintext.py [Pushover settings]
+msgid "How many seconds your notification will continue to be retried"
+msgstr ""
 
 #: sabnzbd/skintext.py [Header for Pushbullet notification section]
 msgid "Pushbullet"
@@ -4080,6 +4046,10 @@ msgid "S01E05 Episode Folder"
 msgstr "S01E05 Фасцикла епизоде"
 
 #: sabnzbd/skintext.py
+msgid "Job Name as Filename"
+msgstr ""
+
+#: sabnzbd/skintext.py
 msgid "Title"
 msgstr "Наслов"
 
@@ -4095,7 +4065,7 @@ msgstr "Име.Филма"
 msgid "Movie_Name"
 msgstr "Име_филма"
 
-#: sabnzbd/skintext.py # sabnzbd/skintext.py
+#: sabnzbd/skintext.py
 msgid "Show Name"
 msgstr "Име серије"
 
@@ -4115,7 +4085,7 @@ msgstr "Број сезоне"
 msgid "Episode Number"
 msgstr "Број епизоде"
 
-#: sabnzbd/skintext.py # sabnzbd/skintext.py
+#: sabnzbd/skintext.py
 msgid "Episode Name"
 msgstr "Име епизоде"
 
@@ -4148,8 +4118,8 @@ msgid "Original Filename"
 msgstr "Оригинално име датотеке"
 
 #: sabnzbd/skintext.py
-msgid "Original Foldername"
-msgstr "Оригинално име фасцикле"
+msgid "Original Job Name"
+msgstr ""
 
 #: sabnzbd/skintext.py
 msgid "Lower Case"
@@ -4166,10 +4136,6 @@ msgstr "текст"
 #: sabnzbd/skintext.py
 msgid "file"
 msgstr "датотека"
-
-#: sabnzbd/skintext.py
-msgid "folder"
-msgstr "фасцикла"
 
 #: sabnzbd/skintext.py
 msgid "Sort String"
@@ -4275,35 +4241,35 @@ msgstr "Тема"
 msgid "Selection"
 msgstr "Избор"
 
-#: sabnzbd/skintext.py # sabnzbd/skintext.py
+#: sabnzbd/skintext.py
 msgid "Pause for 5 minutes"
 msgstr "Паузирај 5 минута"
 
-#: sabnzbd/skintext.py # sabnzbd/skintext.py
+#: sabnzbd/skintext.py
 msgid "Pause for 15 minutes"
 msgstr "Паузирај 15 минута"
 
-#: sabnzbd/skintext.py # sabnzbd/skintext.py
+#: sabnzbd/skintext.py
 msgid "Pause for 30 minutes"
 msgstr "Паузирај 30 минута"
 
-#: sabnzbd/skintext.py # sabnzbd/skintext.py
+#: sabnzbd/skintext.py
 msgid "Pause for 1 hour"
 msgstr "Паузирај 1 сат"
 
-#: sabnzbd/skintext.py # sabnzbd/skintext.py
+#: sabnzbd/skintext.py
 msgid "Pause for 3 hours"
 msgstr "Паузирај 3 сата"
 
-#: sabnzbd/skintext.py # sabnzbd/skintext.py
+#: sabnzbd/skintext.py
 msgid "Pause for 6 hours"
 msgstr "Паузирај 6 сати"
 
-#: sabnzbd/skintext.py # sabnzbd/skintext.py
+#: sabnzbd/skintext.py
 msgid "left"
 msgstr "остало"
 
-#: sabnzbd/skintext.py # sabnzbd/skintext.py
+#: sabnzbd/skintext.py
 msgid "Free Space"
 msgstr "Слободан простор"
 
@@ -4311,7 +4277,7 @@ msgstr "Слободан простор"
 msgid "Temp Folder"
 msgstr "Привремено"
 
-#: sabnzbd/skintext.py # sabnzbd/skintext.py
+#: sabnzbd/skintext.py
 msgid "Multi-Operations"
 msgstr "Мулти-операције"
 
@@ -4348,7 +4314,11 @@ msgstr ""
 msgid "WARNING:"
 msgstr "ПАЖЊА:"
 
-#: sabnzbd/skintext.py # sabnzbd/skintext.py
+#: sabnzbd/skintext.py # sabnzbd/skintext.py [Fetch from URL button in "Add NZB" dialog box]
+msgid "Fetch"
+msgstr "Преузми"
+
+#: sabnzbd/skintext.py
 msgid "Refresh rate"
 msgstr "Брзина освежавања"
 
@@ -4376,7 +4346,7 @@ msgstr "Ekstra kolona reda"
 msgid "Extra history column"
 msgstr ""
 
-#: sabnzbd/skintext.py # sabnzbd/skintext.py
+#: sabnzbd/skintext.py
 msgid "page"
 msgstr "страни"
 
@@ -4392,7 +4362,7 @@ msgstr "artikli"
 msgid "Rename"
 msgstr "Преименуј"
 
-#: sabnzbd/skintext.py # sabnzbd/skintext.py
+#: sabnzbd/skintext.py
 msgid "Queue repair"
 msgstr "Поправљење реда"
 
@@ -4408,7 +4378,7 @@ msgstr "Zapušteni poslovi"
 msgid "Send back to queue"
 msgstr "Pošalji nazad u red"
 
-#: sabnzbd/skintext.py # sabnzbd/skintext.py
+#: sabnzbd/skintext.py
 msgid "Delete All"
 msgstr "Избриши све"
 
@@ -4424,19 +4394,15 @@ msgstr "Povuci NZB sa URL"
 msgid "Upload NZB"
 msgstr "Pošalji NZB"
 
-#: sabnzbd/skintext.py # sabnzbd/skintext.py
+#: sabnzbd/skintext.py
 msgid "Optionally specify a filename"
 msgstr "Опционо специфирати име"
-
-#: sabnzbd/skintext.py
-msgid "Formats: .nzb, .rar, .zip, .gz, .bz2"
-msgstr "Formati: .nzb, .rar, .zip, .gz, .bz2"
 
 #: sabnzbd/skintext.py
 msgid "Submit"
 msgstr "Пошаљи"
 
-#: sabnzbd/skintext.py # sabnzbd/skintext.py
+#: sabnzbd/skintext.py
 msgid "Open Informational URL"
 msgstr "Отвори информативни УРЛ"
 
@@ -4456,11 +4422,11 @@ msgstr "Ukloni sve odabrane fajlove"
 msgid "Hide/show completed files"
 msgstr "Sakrij/prikaži sve završene datoteke"
 
-#: sabnzbd/skintext.py # sabnzbd/skintext.py
+#: sabnzbd/skintext.py
 msgid "View Script Log"
 msgstr "Види извештај скрипта"
 
-#: sabnzbd/skintext.py # sabnzbd/skintext.py
+#: sabnzbd/skintext.py
 msgid "Update Available!"
 msgstr "Нова верзија доступна!"
 
@@ -4474,7 +4440,7 @@ msgstr ""
 msgid "Glitter has some (new) features you might like!"
 msgstr ""
 
-#: sabnzbd/skintext.py # sabnzbd/skintext.py
+#: sabnzbd/skintext.py
 msgid "Custom"
 msgstr "Прилагођено"
 
@@ -4486,15 +4452,15 @@ msgstr ""
 msgid "Tabbed layout <br/>(separate queue and history)"
 msgstr ""
 
-#: sabnzbd/skintext.py # sabnzbd/skintext.py
+#: sabnzbd/skintext.py
 msgid "Speed"
 msgstr "Брзина"
 
-#: sabnzbd/skintext.py # sabnzbd/skintext.py
+#: sabnzbd/skintext.py
 msgid "Confirm Queue Deletions"
 msgstr "Потврда брисања реда"
 
-#: sabnzbd/skintext.py # sabnzbd/skintext.py
+#: sabnzbd/skintext.py
 msgid "Confirm History Deletions"
 msgstr "Потврда брисања хронологије"
 
@@ -4506,13 +4472,19 @@ msgstr "Koliko dugo ili dokle želite da pauzirate? (na engleskom!)"
 msgid "Sorry, we could not interpret that. Try again."
 msgstr "Žao nam je, nismo mogli to da interpretiramo. Pokušajte ponovo."
 
-#: sabnzbd/skintext.py # sabnzbd/skintext.py
+#: sabnzbd/skintext.py
 msgid "Pause for..."
 msgstr "Паузирај за..."
 
-#: sabnzbd/skintext.py # sabnzbd/skintext.py
+#: sabnzbd/skintext.py
 msgid "Refresh"
 msgstr "Освежи"
+
+#: sabnzbd/skintext.py
+msgid ""
+"All usernames, passwords and API-keys are automatically removed from the log "
+"and the included copy of your settings."
+msgstr ""
 
 #: sabnzbd/skintext.py
 msgid "Sort by Age <small>Oldest&rarr;Newest</small>"
@@ -4554,11 +4526,11 @@ msgstr ""
 msgid "Removing jobs"
 msgstr ""
 
-#: sabnzbd/skintext.py # sabnzbd/skintext.py
+#: sabnzbd/skintext.py
 msgid "Prev"
 msgstr "Претходно"
 
-#: sabnzbd/skintext.py # sabnzbd/skintext.py # sabnzbd/skintext.py [Button to go to next Wizard page]
+#: sabnzbd/skintext.py # sabnzbd/skintext.py [Button to go to next Wizard page]
 msgid "Next"
 msgstr "Следеће"
 
@@ -4574,7 +4546,7 @@ msgstr "За функционисање Plush-а упалите JavaScript!"
 msgid "Options"
 msgstr "Опције"
 
-#: sabnzbd/skintext.py # sabnzbd/skintext.py
+#: sabnzbd/skintext.py
 msgid "Pause for how many minutes?"
 msgstr "Паузирати за колико минута?"
 
@@ -4660,10 +4632,6 @@ msgstr "При прелазу миша преко рада, зауставља �
 msgid "Block Refreshes on Hover"
 msgstr "Блокирати обнове на прелаз миша"
 
-#: sabnzbd/skintext.py [Fetch from URL button in "Add NZB" dialog box]
-msgid "Fetch"
-msgstr "Преузми"
-
 #: sabnzbd/skintext.py [Upload button in "Add NZB" dialog box]
 msgid "Upload"
 msgstr "Слање"
@@ -4672,7 +4640,7 @@ msgstr "Слање"
 msgid "Upload: .nzb .rar .zip .gz, .bz2"
 msgstr "Pošalji: .nzb .rar .zip .gz, .bz2"
 
-#: sabnzbd/skintext.py # sabnzbd/skintext.py
+#: sabnzbd/skintext.py
 msgid "Progress"
 msgstr "Напредак"
 
@@ -4884,22 +4852,17 @@ msgstr ""
 msgid "Don't have a usenet provider? We recommend trying %s."
 msgstr "Немате 'usenet' провајдер? Препоручујемо Вам %s."
 
-#: sabnzbd/tvsort.py [Error message]
+#: sabnzbd/sorting.py [Error message]
 msgid "Error getting TV info (%s)"
 msgstr "Грешка преузимању ТВ инфо (%s)"
 
-#: sabnzbd/tvsort.py [Error message] # sabnzbd/tvsort.py [Error message] # sabnzbd/tvsort.py [Error message]
-#: sabnzbd/tvsort.py [Error message]
+#: sabnzbd/sorting.py [Error message]
 msgid "Failed to rename: %s to %s"
 msgstr "Неуспешно преименовање : %s у %s"
 
-#: sabnzbd/tvsort.py [Error message]
+#: sabnzbd/sorting.py [Error message]
 msgid "Failed to rename similar file: %s to %s"
 msgstr "Неуспешно преименовање сличне датотеке: %s у %s"
-
-#: sabnzbd/urlgrabber.py
-msgid "Server name does not resolve"
-msgstr "Ime servera se ne može odrediti"
 
 #: sabnzbd/urlgrabber.py
 msgid "Unauthorized access"
@@ -4921,7 +4884,7 @@ msgstr "URLGRABBER SE SRUŠIO"
 msgid "Unusable NZB file"
 msgstr "NZB датотека неупотребљива"
 
-#: sabnzbd/urlgrabber.py # sabnzbd/urlgrabber.py
+#: sabnzbd/urlgrabber.py
 msgid "URL Fetching failed; %s"
 msgstr "Погрешно учитавање УРЛ-а; %s"
 
@@ -4996,6 +4959,12 @@ msgstr "Погрешно учитавање УРЛ-а; %s"
 
 #~ msgid "Enable sorting and renaming of date named files."
 #~ msgstr "Упали сређивање и преименовање датотеке са датумом"
+
+#~ msgid "folder"
+#~ msgstr "фасцикла"
+
+#~ msgid "Original Foldername"
+#~ msgstr "Оригинално име фасцикле"
 
 #~ msgid "Enable generic sorting and renaming of files."
 #~ msgstr "Упали генерално сортирање/преименовање датотеке."
@@ -5189,6 +5158,9 @@ msgstr "Погрешно учитавање УРЛ-а; %s"
 #~ msgid "Queued"
 #~ msgstr "У реду"
 
+#~ msgid "No post-processing because of failed verification"
+#~ msgstr "Нема пост-процесирање пошто провера није успела"
+
 #~ msgid "View script output"
 #~ msgstr "Видети резултат скрипта"
 
@@ -5197,6 +5169,12 @@ msgstr "Погрешно учитавање УРЛ-а; %s"
 
 #~ msgid "Folder \"%s\" does not exist"
 #~ msgstr "фасцикла \"%s\" не постоји"
+
+#~ msgid "SQL Commit Failed, see log"
+#~ msgstr "Погрешно SQL извршавање, видети извештај"
+
+#~ msgid "CRC Error in %s (%s -> %s)"
+#~ msgstr "CRC грешка у %s (%s -> %s)"
 
 #~ msgid "Not matched"
 #~ msgstr "Не одговара"
@@ -5247,6 +5225,9 @@ msgstr "Погрешно учитавање УРЛ-а; %s"
 #~ msgid "Unpacking failed, these file(s) are missing:"
 #~ msgstr "Неуспешан издвој, ове датотеке недостају:"
 
+#~ msgid "Main packet not found..."
+#~ msgstr "Главни пакет није нађен..."
+
 #~ msgid "KB/s"
 #~ msgstr "КБ/с"
 
@@ -5280,6 +5261,12 @@ msgstr "Погрешно учитавање УРЛ-а; %s"
 #~ msgid "Check result of unpacking (needs to be off for some file systems)."
 #~ msgstr ""
 #~ "Провери резултат издвоја (треба да се угаси за неке системе датотеке)."
+
+#~ msgid "Send notifications to Growl"
+#~ msgstr "Пошаљи обавештења у „Growl“"
+
+#~ msgid "Send notifications to NotifyOSD"
+#~ msgstr "Шаљи обавештења у „NotifyOSD“"
 
 #~ msgid "Invalid par2 files, cannot verify or repair"
 #~ msgstr "Погрешне par2 дат., не може да се провери/поправи"
@@ -5402,6 +5389,9 @@ msgstr "Погрешно учитавање УРЛ-а; %s"
 
 #~ msgid "Notification classes"
 #~ msgstr "Класе нотификације"
+
+#~ msgid "Send notifications to Notification Center"
+#~ msgstr "Пошаљи нотификације у Центру нотификације"
 
 #~ msgid "Enable classes of messages to be reported (none, one or multiple)"
 #~ msgstr "Омогући класе поруке да буду извештене (без, једна или више)"

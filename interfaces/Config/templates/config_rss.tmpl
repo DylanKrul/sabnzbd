@@ -41,7 +41,7 @@
                 <input type="hidden" name="session" value="$session" />
                 <table id="subscriptions">
                     <tbody>
-                        <!--#set $feeds = sorted($rss.keys(), cmp=lambda x,y: cmp(x.lower(), y.lower()))#-->
+                        <!--#set $feeds = sorted($rss.keys(), key=lambda x: x.lower())#-->
                         <!--#set $odd = False#-->
                         <!--#for $feed_item in $feeds#-->
                             <!--#set $odd = not $odd#-->
@@ -154,7 +154,7 @@
                                     <option value=">"> $T('rss-atleast')</option>
                                     <option value="<"> $T('rss-atmost')</option>
                                     <option value="F"> $T('rss-from')</option>
-                                    <option value="F"> $T('rss-from-show')</option>
+                                    <option value="F"> $T('rss-from-show') ($T('rss-accept'))</option>
                                 </select>
                             </td>
                             <td>
@@ -226,8 +226,8 @@
                                     <option value="C"> $T('rss-mustcat')</option>
                                     <option value=">"> $T('rss-atleast')</option>
                                     <option value="<"> $T('rss-atmost')</option>
-                                    <option value="S"> $T('rss-from-show')</option>
                                     <option value="F"> $T('rss-from')</option>
+                                    <option value="S"> $T('rss-from-show') ($T('rss-accept'))</option>
                                 </select>
                             </td>
                             <td>
@@ -287,7 +287,7 @@
                     <input type="hidden" name="feed" value="$feed" />
                     <table class="catTable">
                         <tbody>
-                            <tr class="<!--#if $odd then " alt " else " "#--> <!--#if $filter[3]!="A" then 'disabled_options_rule' else ""#-->">
+                            <tr class="<!--#if $odd then " alt " else " "#--> <!--#if $filter[3]!="A" and $filter[3]!="S" then 'disabled_options_rule' else ""#-->">
                                 <td>
                                     <input type="checkbox" name="enabled" value="1" <!--#if $filter[6]=='1' then 'checked="checked"' else ""#--> />
                                 </td>
@@ -302,8 +302,8 @@
                                         <option value="C" <!--#if $filter[3]=="C" then 'selected="selected"' else ""#-->> $T('rss-mustcat')</option>
                                         <option value=">" <!--#if $filter[3]==">" then 'selected="selected"' else ""#-->> $T('rss-atleast')</option>
                                         <option value="<" <!--#if $filter[3]=="<" then 'selected="selected"' else ""#-->> $T('rss-atmost')</option>
-                                        <option value="S" <!--#if $filter[3]=="S" then 'selected="selected"' else ""#-->> $T('rss-from-show')</option>
                                         <option value="F" <!--#if $filter[3]=="F" then 'selected="selected"' else ""#-->> $T('rss-from')</option>
+                                        <option value="S" <!--#if $filter[3]=="S" then 'selected="selected"' else ""#-->> $T('rss-from-show') ($T('rss-accept'))</option>
                                     </select>
                                 </td>
                                 <td>
@@ -390,9 +390,10 @@
                         <th class="no-sort">$T('link-download')</th>
                         <th>$T('rss-filter')</th>
                         <th>$T('size')</th>
-                        <th width="65%">$T('sort-title')</th>
+                        <th width="60%">$T('sort-title')</th>
                         <th>$T('category')</th>
                         <th class="default-sort">$T('nzo-age')</th>
+                        <th>$T('source')</th>
                     </tr>
                 </thead>
                 <!--#for $job in $matched#-->
@@ -411,6 +412,13 @@
                         <td>$job['title']</td>
                         <td>$job['cat']</td>
                         <td data-sort-value="$job['age_ms']">$job['age']</td>
+                        <td data-sort-value="$job['baselink']" title="$job['baselink']">
+                            <!--#if not $job['infourl']#-->
+                            <div class="favicon source-icon" style="background-image: url(//$job['baselink']/favicon.ico);" data-domain="$job['baselink']"></div>
+                            <!--#else#-->
+                            <a class="favicon source-icon" href="$job['infourl']" target="_blank" style="background-image: url(//$job['baselink']/favicon.ico);" data-domain="$job['baselink']"></a>
+                            <!--#end if#-->
+                        </td>
                     </tr>
                 <!--#end for#-->
             </table>
@@ -426,9 +434,10 @@
                         <th class="no-sort">$T('link-download')</th>
                         <th>$T('rss-filter')</th>
                         <th>$T('size')</th>
-                        <th width="65%">$T('sort-title')</th>
+                        <th width="60%">$T('sort-title')</th>
                         <th>$T('category')</th>
                         <th class="default-sort">$T('nzo-age')</th>
+                        <th>$T('source')</th>
                     </tr>
                 </thead>
                 <!--#for $job in $unmatched#-->
@@ -447,6 +456,13 @@
                         <td>$job['title']</td>
                         <td>$job['cat']</td>
                         <td data-sort-value="$job['age_ms']">$job['age']</td>
+                        <td data-sort-value="$job['baselink']" title="$job['baselink']">
+                            <!--#if not $job['infourl']#-->
+                            <div class="favicon source-icon" style="background-image: url(//$job['baselink']/favicon.ico);" data-domain="$job['baselink']"></div>
+                            <!--#else#-->
+                            <a class="favicon source-icon" href="$job['infourl']" target="_blank" style="background-image: url(//$job['baselink']/favicon.ico);" data-domain="$job['baselink']"></a>
+                            <!--#end if#-->
+                        </td>
                     </tr>
                 <!--#end for#-->
             </table>
@@ -476,8 +492,10 @@
                             <td>$job['title']</td>
                             <td>$job['cat']</td>
                             <td data-sort-value="$job['baselink']" title="$job['baselink']">
-                                <!--#if $job['baselink']#-->
+                                <!--#if not $job['infourl']#-->
                                 <div class="favicon source-icon" style="background-image: url(//$job['baselink']/favicon.ico);" data-domain="$job['baselink']"></div>
+                                <!--#else#-->
+                                <a class="favicon source-icon" href="$job['infourl']" target="_blank" style="background-image: url(//$job['baselink']/favicon.ico);" data-domain="$job['baselink']"></a>
                                 <!--#end if#-->
                             </td>
                         </tr>
@@ -568,7 +586,7 @@ function urlencode(str) {
 
     // Only the Accept filter needs all the options
     \$('form[action="upd_rss_filter"]').find('select[name="filter_type"]').change(function() {
-        \$(this).parent().parent().find('select:not([name="filter_type"])').attr('disabled', \$(this).val() != "A")
+        \$(this).parent().parent().find('select:not([name="filter_type"])').attr('disabled', \$(this).val() != "A" && \$(this).val() != "S")
     })
     // Trigger on-load for all
     \$('.disabled_options_rule').find('td select:not([name="filter_type"])').attr('disabled', true)

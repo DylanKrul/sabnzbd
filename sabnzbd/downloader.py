@@ -1,5 +1,5 @@
-#!/usr/bin/python -OO
-# Copyright 2008-2017 The SABnzbd-Team <team@sabnzbd.org>
+#!/usr/bin/python3 -OO
+# Copyright 2007-2019 The SABnzbd-Team <team@sabnzbd.org>
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License
@@ -27,10 +27,10 @@ from nntplib import NNTPPermanentError
 import socket
 import random
 import sys
-import Queue
+import queue
 
 import sabnzbd
-from sabnzbd.decorators import synchronized, notify_downloader, DOWNLOADER_CV
+from sabnzbd.decorators import synchronized, NzbQueueLocker, DOWNLOADER_CV
 from sabnzbd.constants import MAX_DECODE_QUEUE, LIMIT_DECODE_QUEUE
 from sabnzbd.decoder import Decoder
 from sabnzbd.newswrapper import NewsWrapper, request_server_info
@@ -40,7 +40,7 @@ import sabnzbd.config as config
 import sabnzbd.cfg as cfg
 from sabnzbd.bpsmeter import BPSMeter
 import sabnzbd.scheduler
-from sabnzbd.misc import from_units, nntp_to_msg
+from sabnzbd.misc import from_units, nntp_to_msg, int_conv
 from sabnzbd.utils.happyeyeballs import happyeyeballs
 
 
@@ -58,10 +58,10 @@ _PENALTY_VERYSHORT = 0.1  # Error 400 without cause clues
 TIMER_LOCK = RLock()
 
 
-class Server(object):
+class Server:
 
-    def __init__(self, id, displayname, host, port, timeout, threads, priority, ssl, ssl_verify, send_group, username=None,
-                 password=None, optional=False, retention=0):
+    def __init__(self, id, displayname, host, port, timeout, threads, priority, ssl, ssl_verify, ssl_ciphers,
+                 send_group, username=None, password=None, optional=False, retention=0):
 
         self.id = id
         self.newid = None
@@ -74,6 +74,7 @@ class Server(object):
         self.priority = priority
         self.ssl = ssl
         self.ssl_verify = ssl_verify
+        self.ssl_ciphers = ssl_ciphers
         self.optional = optional
         self.retention = retention
         self.send_group = send_group
@@ -165,13 +166,13 @@ class Downloader(Thread):
         # Used for scheduled pausing
         self.paused = paused
 
-        # used for throttling bandwidth and scheduling bandwidth changes
+        # Used for reducing speed
+        self.delayed = False
+        self.bandwidth_limit = 0
+        self.bandwidth_perc = 0
         cfg.bandwidth_perc.callback(self.speed_set)
         cfg.bandwidth_max.callback(self.speed_set)
         self.speed_set()
-
-        # Used for reducing speed
-        self.delayed = False
 
         # Used to see if we can add a slowdown to the Downloader-loop
         self.can_be_slowed = None
@@ -198,7 +199,7 @@ class Downloader(Thread):
         for server in config.get_servers():
             self.init_server(None, server)
 
-        self.decoder_queue = Queue.Queue()
+        self.decoder_queue = queue.Queue()
 
         # Initialize decoders, only 1 for non-SABYenc
         self.decoder_workers = []
@@ -228,6 +229,7 @@ class Downloader(Thread):
             priority = srv.priority()
             ssl = srv.ssl()
             ssl_verify = srv.ssl_verify()
+            ssl_ciphers = srv.ssl_ciphers()
             username = srv.username()
             password = srv.password()
             optional = srv.optional()
@@ -236,7 +238,7 @@ class Downloader(Thread):
             create = True
 
         if oldserver:
-            for n in xrange(len(self.servers)):
+            for n in range(len(self.servers)):
                 if self.servers[n].id == oldserver:
                     # Server exists, do re-init later
                     create = False
@@ -247,7 +249,7 @@ class Downloader(Thread):
 
         if create and enabled and host and port and threads:
             server = Server(newserver, displayname, host, port, timeout, threads, priority, ssl, ssl_verify,
-                                            send_group, username, password, optional, retention)
+                                    ssl_ciphers, send_group, username, password, optional, retention)
             self.servers.append(server)
             self.server_dict[newserver] = server
 
@@ -256,12 +258,12 @@ class Downloader(Thread):
 
         return
 
-    @notify_downloader
+    @NzbQueueLocker
     def set_paused_state(self, state):
         """ Set downloader to specified paused state """
         self.paused = state
 
-    @notify_downloader
+    @NzbQueueLocker
     def resume(self):
         # Do not notify when SABnzbd is still starting
         if self.paused and sabnzbd.WEB_DIR:
@@ -269,8 +271,8 @@ class Downloader(Thread):
             notifier.send_notification("SABnzbd", T('Resuming'), 'download')
         self.paused = False
 
-    @notify_downloader
-    def pause(self, save=True):
+    @NzbQueueLocker
+    def pause(self):
         """ Pause the downloader, optionally saving admin """
         if not self.paused:
             self.paused = True
@@ -280,14 +282,12 @@ class Downloader(Thread):
                 BPSMeter.do.reset()
             if cfg.autodisconnect():
                 self.disconnect()
-            if save:
-                ArticleCache.do.flush_articles()
 
     def delay(self):
         logging.debug("Delaying")
         self.delayed = True
 
-    @notify_downloader
+    @NzbQueueLocker
     def undelay(self):
         logging.debug("Undelaying")
         self.delayed = False
@@ -296,7 +296,7 @@ class Downloader(Thread):
         logging.info("Waiting for post-processing to finish")
         self.postproc = True
 
-    @notify_downloader
+    @NzbQueueLocker
     def resume_from_postproc(self):
         logging.info("Post-processing finished, resuming download")
         self.postproc = False
@@ -305,13 +305,13 @@ class Downloader(Thread):
         self.force_disconnect = True
 
     def limit_speed(self, value):
-        ''' Set the actual download speed in Bytes/sec
+        """ Set the actual download speed in Bytes/sec
             When 'value' ends with a '%' sign or is within 1-100, it is interpreted as a pecentage of the maximum bandwidth
             When no '%' is found, it is interpreted as an absolute speed (including KMGT notation).
-        '''
+        """
         if value:
             mx = cfg.bandwidth_max.get_int()
-            if '%' in str(value) or (from_units(value) > 0 and from_units(value) < 101):
+            if '%' in str(value) or (0 < from_units(value) < 101):
                 limit = value.strip(' %')
                 self.bandwidth_perc = from_units(limit)
                 if mx:
@@ -363,17 +363,30 @@ class Downloader(Thread):
         return True
 
     def nzo_servers(self, nzo):
-        return filter(nzo.server_in_try_list, self.servers)
+        return list(filter(nzo.server_in_try_list, self.servers))
 
     def maybe_block_server(self, server):
-        if server.optional and server.active and (server.bad_cons / server.threads) > 3:
-            # Optional and active server had too many problems,
-            # disable it now and send a re-enable plan to the scheduler
+        # Was it resolving problem?
+        if server.info is False:
+            # Warn about resolving issues
+            errormsg = T('Cannot connect to server %s [%s]') % (server.host, T('Server name does not resolve'))
+            if server.errormsg != errormsg:
+                server.errormsg = errormsg
+                logging.warning(errormsg)
+                logging.warning(T('Server %s will be ignored for %s minutes'), server.host, _PENALTY_TIMEOUT)
+
+            # Not fully the same as the code below for optional servers
             server.bad_cons = 0
             server.active = False
-            server.errormsg = T('Server %s will be ignored for %s minutes') % ('', _PENALTY_TIMEOUT)
-            logging.warning(T('Server %s will be ignored for %s minutes'), server.id, _PENALTY_TIMEOUT)
-            self.plan_server(server.id, _PENALTY_TIMEOUT)
+            self.plan_server(server, _PENALTY_TIMEOUT)
+
+        # Optional and active server had too many problems.
+        # Disable it now and send a re-enable plan to the scheduler
+        if server.optional and server.active and (server.bad_cons / server.threads) > 3:
+            server.bad_cons = 0
+            server.active = False
+            logging.warning(T('Server %s will be ignored for %s minutes'), server.host, _PENALTY_TIMEOUT)
+            self.plan_server(server, _PENALTY_TIMEOUT)
 
             # Remove all connections to server
             for nw in server.idle_threads + server.busy_threads:
@@ -383,12 +396,13 @@ class Downloader(Thread):
 
             sabnzbd.nzbqueue.NzbQueue.do.reset_all_try_lists()
 
-    def decode(self, article, lines, raw_data):
-        self.decoder_queue.put((article, lines, raw_data))
+    def decode(self, article, raw_data):
+        self.decoder_queue.put((article, raw_data))
         # See if there's space left in cache, pause otherwise
+        # We use reported article-size, just like sabyenc does
         # But do allow some articles to enter queue, in case of full cache
         qsize = self.decoder_queue.qsize()
-        if (not ArticleCache.do.reserve_space(lines) and qsize > MAX_DECODE_QUEUE) or (qsize > LIMIT_DECODE_QUEUE):
+        if (not ArticleCache.do.reserve_space(article.bytes) and qsize > MAX_DECODE_QUEUE) or (qsize > LIMIT_DECODE_QUEUE):
             sabnzbd.downloader.Downloader.do.delay()
 
     def run(self):
@@ -396,21 +410,9 @@ class Downloader(Thread):
         sabnzbd.EXTERNAL_IPV6 = sabnzbd.test_ipv6()
         logging.debug('External IPv6 test result: %s', sabnzbd.EXTERNAL_IPV6)
 
-        # Then have to check the quality of SSL verification
-        if sabnzbd.HAVE_SSL_CONTEXT:
-            try:
-                import ssl
-                ctx = ssl.create_default_context()
-                base_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                ssl_sock = ctx.wrap_socket(base_sock, server_hostname=cfg.selftest_host())
-                ssl_sock.settimeout(2.0)
-                ssl_sock.connect((cfg.selftest_host(), 443))
-                ssl_sock.close()
-            except:
-                # Seems something is still wrong
-                sabnzbd.set_https_verification(0)
-                sabnzbd.HAVE_SSL_CONTEXT = False
-        logging.debug('SSL verification test: %s', sabnzbd.HAVE_SSL_CONTEXT)
+        # Then we check SSL certificate checking
+        sabnzbd.CERTIFICATE_VALIDATION = sabnzbd.test_cert_checking()
+        logging.debug('SSL verification test: %s', sabnzbd.CERTIFICATE_VALIDATION)
 
         # Start decoders
         for decoder in self.decoder_workers:
@@ -457,9 +459,11 @@ class Downloader(Thread):
                         else:
                             nw.timeout = None
 
-                    if server.info is None:
-                        self.maybe_block_server(server)
-                        request_server_info(server)
+                    if not server.info:
+                        # Only request info if there's stuff in the queue
+                        if not sabnzbd.nzbqueue.NzbQueue.do.is_empty():
+                            self.maybe_block_server(server)
+                            request_server_info(server)
                         break
 
                     article = sabnzbd.nzbqueue.NzbQueue.do.get_article(server, self.servers)
@@ -469,9 +473,9 @@ class Downloader(Thread):
 
                     if server.retention and article.nzf.nzo.avg_stamp < time.time() - server.retention:
                         # Let's get rid of all the articles for this server at once
-                        logging.info('Job %s too old for %s, moving on', article.nzf.nzo.work_name, server.id)
+                        logging.info('Job %s too old for %s, moving on', article.nzf.nzo.final_name, server.host)
                         while article:
-                            self.decode(article, None, None)
+                            self.decode(article, None)
                             article = article.nzf.nzo.get_article(server, self.servers)
                         break
 
@@ -484,10 +488,10 @@ class Downloader(Thread):
                         self.__request_article(nw)
                     else:
                         try:
-                            logging.info("%s@%s: Initiating connection", nw.thrdnum, server.id)
+                            logging.info("%s@%s: Initiating connection", nw.thrdnum, server.host)
                             nw.init_connect(self.write_fds)
                         except:
-                            logging.error(T('Failed to initialize %s@%s with reason: %s'), nw.thrdnum, server.id, sys.exc_info()[1])
+                            logging.error(T('Failed to initialize %s@%s with reason: %s'), nw.thrdnum, server.host, sys.exc_info()[1])
                             self.__reset_nw(nw, "failed to initialize")
 
             # Exit-point
@@ -540,7 +544,7 @@ class Downloader(Thread):
                     # Check 10 seconds after enabling slowdown
                     if self.can_be_slowed_timer and time.time() > self.can_be_slowed_timer + 10:
                         # Now let's check if it was stable in the last 10 seconds
-                        self.can_be_slowed = (BPSMeter.do.get_stable_speed(timespan=10) > 0)
+                        self.can_be_slowed = BPSMeter.do.get_stable_speed(timespan=10)
                         self.can_be_slowed_timer = 0
                         logging.debug('Downloader-slowdown: %r', self.can_be_slowed)
 
@@ -583,95 +587,90 @@ class Downloader(Thread):
                     nzo = article.nzf.nzo
 
                 try:
-                    bytes, done, skip = nw.recv_chunk()
+                    bytes_received, done, skip = nw.recv_chunk()
                 except:
-                    bytes, done, skip = (0, False, False)
+                    bytes_received, done, skip = (0, False, False)
 
                 if skip:
                     BPSMeter.do.update()
                     continue
 
-                if bytes < 1:
+                if bytes_received < 1:
                     self.__reset_nw(nw, "server closed connection", warn=False, wait=False)
                     continue
 
                 else:
                     if self.bandwidth_limit:
-                        bps = BPSMeter.do.get_bps()
-                        bps += bytes
                         limit = self.bandwidth_limit
-                        if bps > limit:
-                            while BPSMeter.do.get_bps() > limit:
+                        if bytes_received + BPSMeter.do.bps > limit:
+                            while BPSMeter.do.bps > limit:
                                 time.sleep(0.05)
                                 BPSMeter.do.update()
-                    BPSMeter.do.update(server.id, bytes)
+                    BPSMeter.do.update(server.id, bytes_received)
+                    nzo.update_download_stats(BPSMeter.do.bps, server.id, bytes_received)
 
-                    if nzo:
-                        nzo.update_download_stats(BPSMeter.do.get_bps(), server.id, bytes)
-
-                if not done and nw.status_code != '222':
-                    if not nw.connected or nw.status_code == '480':
+                if not done and nw.status_code != 222:
+                    if not nw.connected or nw.status_code == 480:
                         done = False
-
                         try:
                             nw.finish_connect(nw.status_code)
                             if sabnzbd.LOG_ALL:
-                                logging.debug("%s@%s last message -> %s", nw.thrdnum, nw.server.id, nntp_to_msg(nw.data))
+                                logging.debug("%s@%s last message -> %s", nw.thrdnum, nw.server.host, nntp_to_msg(nw.data))
                             nw.clear_data()
-                        except NNTPPermanentError, error:
+                        except NNTPPermanentError as error:
                             # Handle login problems
                             block = False
                             penalty = 0
                             msg = error.response
-                            ecode = msg[:3]
+                            ecode = int_conv(msg[:3])
                             display_msg = ' [%s]' % msg
                             logging.debug('Server login problem: %s, %s', ecode, msg)
-                            if ecode in ('502', '400', '481', '482') and clues_too_many(msg):
+                            if ecode in (502, 400, 481, 482) and clues_too_many(msg):
                                 # Too many connections: remove this thread and reduce thread-setting for server
                                 # Plan to go back to the full number after a penalty timeout
                                 if server.active:
                                     errormsg = T('Too many connections to server %s') % display_msg
                                     if server.errormsg != errormsg:
                                         server.errormsg = errormsg
-                                        logging.warning(T('Too many connections to server %s'), server.id)
+                                        logging.warning(T('Too many connections to server %s'), server.host)
                                     self.__reset_nw(nw, None, warn=False, destroy=True, quit=True)
-                                    self.plan_server(server.id, _PENALTY_TOOMANY)
+                                    self.plan_server(server, _PENALTY_TOOMANY)
                                     server.threads -= 1
-                            elif ecode in ('502', '481', '482') and clues_too_many_ip(msg):
+                            elif ecode in (502, 481, 482) and clues_too_many_ip(msg):
                                 # Account sharing?
                                 if server.active:
                                     errormsg = T('Probable account sharing') + display_msg
                                     if server.errormsg != errormsg:
                                         server.errormsg = errormsg
-                                        name = ' (%s)' % server.id
+                                        name = ' (%s)' % server.host
                                         logging.warning(T('Probable account sharing') + name)
                                 penalty = _PENALTY_SHARE
                                 block = True
-                            elif ecode in ('481', '482', '381') or (ecode == '502' and clues_login(msg)):
+                            elif ecode in (452, 481, 482, 381) or (ecode == 502 and clues_login(msg)):
                                 # Cannot login, block this server
                                 if server.active:
                                     errormsg = T('Failed login for server %s') % display_msg
                                     if server.errormsg != errormsg:
                                         server.errormsg = errormsg
-                                        logging.error(T('Failed login for server %s'), server.id)
+                                        logging.error(T('Failed login for server %s'), server.host)
                                 penalty = _PENALTY_PERM
                                 block = True
-                            elif ecode in ('502', '482'):
+                            elif ecode in (502, 482):
                                 # Cannot connect (other reasons), block this server
                                 if server.active:
                                     errormsg = T('Cannot connect to server %s [%s]') % ('', display_msg)
                                     if server.errormsg != errormsg:
                                         server.errormsg = errormsg
-                                        logging.warning(T('Cannot connect to server %s [%s]'), server.id, msg)
+                                        logging.warning(T('Cannot connect to server %s [%s]'), server.host, msg)
                                 if clues_pay(msg):
                                     penalty = _PENALTY_PERM
                                 else:
                                     penalty = _PENALTY_502
                                 block = True
-                            elif ecode == '400':
+                            elif ecode == 400:
                                 # Temp connection problem?
                                 if server.active:
-                                    logging.debug('Unspecified error 400 from server %s', server.id)
+                                    logging.debug('Unspecified error 400 from server %s', server.host)
                                 penalty = _PENALTY_VERYSHORT
                                 block = True
                             else:
@@ -680,62 +679,62 @@ class Downloader(Thread):
                                     errormsg = T('Cannot connect to server %s [%s]') % ('', display_msg)
                                     if server.errormsg != errormsg:
                                         server.errormsg = errormsg
-                                        logging.warning(T('Cannot connect to server %s [%s]'), server.id, msg)
+                                        logging.warning(T('Cannot connect to server %s [%s]'), server.host, msg)
                                 penalty = _PENALTY_UNKNOWN
                                 block = True
                             if block or (penalty and server.optional):
                                 if server.active:
                                     server.active = False
                                     if penalty and (block or server.optional):
-                                        self.plan_server(server.id, penalty)
+                                        self.plan_server(server, penalty)
                                     sabnzbd.nzbqueue.NzbQueue.do.reset_all_try_lists()
                                 self.__reset_nw(nw, None, warn=False, quit=True)
                             continue
                         except:
                             logging.error(T('Connecting %s@%s failed, message=%s'),
-                                              nw.thrdnum, nw.server.id, nntp_to_msg(nw.data))
+                                              nw.thrdnum, nw.server.host, nntp_to_msg(nw.data))
                             # No reset-warning needed, above logging is sufficient
                             self.__reset_nw(nw, None, warn=False)
 
                         if nw.connected:
-                            logging.info("Connecting %s@%s finished", nw.thrdnum, nw.server.id)
+                            logging.info("Connecting %s@%s finished", nw.thrdnum, nw.server.host)
                             self.__request_article(nw)
 
-                    elif nw.status_code == '223':
+                    elif nw.status_code == 223:
                         done = True
                         logging.debug('Article <%s> is present', article.article)
 
-                    elif nw.status_code == '211':
+                    elif nw.status_code == 211:
                         done = False
                         logging.debug("group command ok -> %s", nntp_to_msg(nw.data))
                         nw.group = nw.article.nzf.nzo.group
                         nw.clear_data()
                         self.__request_article(nw)
 
-                    elif nw.status_code in ('411', '423', '430'):
+                    elif nw.status_code in (411, 423, 430):
                         done = True
                         logging.debug('Thread %s@%s: Article %s missing (error=%s)',
-                                        nw.thrdnum, nw.server.id, article.article, nw.status_code)
+                                        nw.thrdnum, nw.server.host, article.article, nw.status_code)
                         nw.clear_data()
 
-                    elif nw.status_code == '480':
+                    elif nw.status_code == 480:
                         if server.active:
                             server.active = False
                             server.errormsg = T('Server %s requires user/password') % ''
-                            self.plan_server(server.id, 0)
+                            self.plan_server(server, 0)
                             sabnzbd.nzbqueue.NzbQueue.do.reset_all_try_lists()
-                        msg = T('Server %s requires user/password') % nw.server.id
+                        msg = T('Server %s requires user/password') % nw.server.host
                         self.__reset_nw(nw, msg, quit=True)
 
-                    elif nw.status_code == '500':
+                    elif nw.status_code == 500:
                         if nzo.precheck:
                             # Assume "STAT" command is not supported
                             server.have_stat = False
-                            logging.debug('Server %s does not support STAT', server.id)
+                            logging.debug('Server %s does not support STAT', server.host)
                         else:
                             # Assume "BODY" command is not supported
                             server.have_body = False
-                            logging.debug('Server %s does not support BODY', server.id)
+                            logging.debug('Server %s does not support BODY', server.host)
                         nw.clear_data()
                         self.__request_article(nw)
 
@@ -743,8 +742,8 @@ class Downloader(Thread):
                     server.bad_cons = 0  # Succesful data, clear "bad" counter
                     server.errormsg = server.warning = ''
                     if sabnzbd.LOG_ALL:
-                        logging.debug('Thread %s@%s: %s done', nw.thrdnum, server.id, article.article)
-                    self.decode(article, nw.lines, nw.data)
+                        logging.debug('Thread %s@%s: %s done', nw.thrdnum, server.host, article.article)
+                    self.decode(article, nw.data)
 
                     nw.soft_reset()
                     server.busy_threads.remove(nw)
@@ -775,9 +774,9 @@ class Downloader(Thread):
 
         if warn and errormsg:
             server.warning = errormsg
-            logging.info('Thread %s@%s: ' + errormsg, nw.thrdnum, server.id)
+            logging.info('Thread %s@%s: ' + errormsg, nw.thrdnum, server.host)
         elif errormsg:
-            logging.info('Thread %s@%s: ' + errormsg, nw.thrdnum, server.id)
+            logging.info('Thread %s@%s: ' + errormsg, nw.thrdnum, server.host)
 
         if nw in server.busy_threads:
             server.busy_threads.remove(nw)
@@ -792,13 +791,10 @@ class Downloader(Thread):
         if article:
             if article.tries > cfg.max_art_tries() and (article.fetcher.optional or not cfg.max_art_opt()):
                 # Too many tries on this server, consider article missing
-                self.decode(article, None, None)
+                self.decode(article, None)
             else:
-                # Remove this server from try_list
-                article.fetcher = None
-
                 # Allow all servers to iterate over each nzo/nzf again
-                sabnzbd.nzbqueue.NzbQueue.do.reset_try_lists(article.nzf, article.nzf.nzo)
+                sabnzbd.nzbqueue.NzbQueue.do.reset_try_lists(article)
 
         if destroy:
             nw.terminate(quit=quit)
@@ -814,17 +810,17 @@ class Downloader(Thread):
             if nw.server.send_group and nzo.group != nw.group:
                 group = nzo.group
                 if sabnzbd.LOG_ALL:
-                    logging.debug('Thread %s@%s: GROUP <%s>', nw.thrdnum, nw.server.id, group)
+                    logging.debug('Thread %s@%s: GROUP <%s>', nw.thrdnum, nw.server.host, group)
                 nw.send_group(group)
             else:
                 if sabnzbd.LOG_ALL:
-                    logging.debug('Thread %s@%s: BODY %s', nw.thrdnum, nw.server.id, nw.article.article)
+                    logging.debug('Thread %s@%s: BODY %s', nw.thrdnum, nw.server.host, nw.article.article)
                 nw.body(nzo.precheck)
 
             fileno = nw.nntp.sock.fileno()
             if fileno not in self.read_fds:
                 self.read_fds[fileno] = nw
-        except socket.error, err:
+        except socket.error as err:
             logging.info('Looks like server closed connection: %s', err)
             self.__reset_nw(nw, "server broke off connection", quit=False)
         except:
@@ -840,30 +836,30 @@ class Downloader(Thread):
     # Each server has a dictionary entry, consisting of a list of timestamps.
 
     @synchronized(TIMER_LOCK)
-    def plan_server(self, server_id, interval):
+    def plan_server(self, server, interval):
         """ Plan the restart of a server in 'interval' minutes """
         if cfg.no_penalties() and interval > _PENALTY_SHORT:
             # Overwrite in case of no_penalties
             interval = _PENALTY_SHORT
 
-        logging.debug('Set planned server resume %s in %s mins', server_id, interval)
-        if server_id not in self._timers:
-            self._timers[server_id] = []
+        logging.debug('Set planned server resume %s in %s mins', server.host, interval)
+        if server.id not in self._timers:
+            self._timers[server.id] = []
         stamp = time.time() + 60.0 * interval
-        self._timers[server_id].append(stamp)
+        self._timers[server.id].append(stamp)
         if interval:
-            sabnzbd.scheduler.plan_server(self.trigger_server, [server_id, stamp], interval)
+            sabnzbd.scheduler.plan_server(self.trigger_server, [server.id, stamp], interval)
 
     @synchronized(TIMER_LOCK)
     def trigger_server(self, server_id, timestamp):
         """ Called by scheduler, start server if timer still valid """
-        logging.debug('Trigger planned server resume %s', server_id)
+        logging.debug('Trigger planned server resume for server-id %s', server_id)
         if server_id in self._timers:
             if timestamp in self._timers[server_id]:
                 del self._timers[server_id]
                 self.init_server(server_id, server_id)
 
-    @notify_downloader
+    @NzbQueueLocker
     @synchronized(TIMER_LOCK)
     def unblock(self, server_id):
         # Remove timer
@@ -874,7 +870,7 @@ class Downloader(Thread):
         # Activate server if it was inactive
         for server in self.servers:
             if server.id == server_id and not server.active:
-                logging.debug('Unblock server %s', server_id)
+                logging.debug('Unblock server %s', server.host)
                 self.init_server(server_id, server_id)
                 break
 
@@ -882,7 +878,7 @@ class Downloader(Thread):
         for server_id in self._timers.keys():
             self.unblock(server_id)
 
-    @notify_downloader
+    @NzbQueueLocker
     @synchronized(TIMER_LOCK)
     def check_timers(self):
         """ Make sure every server without a non-expired timer is active """
@@ -891,7 +887,7 @@ class Downloader(Thread):
         kicked = []
         for server_id in self._timers.keys():
             if not [stamp for stamp in self._timers[server_id] if stamp >= now]:
-                logging.debug('Forcing re-evaluation of server %s', server_id)
+                logging.debug('Forcing re-evaluation of server-id %s', server_id)
                 del self._timers[server_id]
                 self.init_server(server_id, server_id)
                 kicked.append(server_id)
@@ -899,13 +895,16 @@ class Downloader(Thread):
         for server in self.servers:
             if server.id not in self._timers:
                 if server.id not in kicked and not server.active:
-                    logging.debug('Forcing activation of server %s', server.id)
+                    logging.debug('Forcing activation of server %s', server.host)
                     self.init_server(server.id, server.id)
 
     def update_server(self, oldserver, newserver):
+        """ Update the server and make sure we trigger
+            the update in the loop to do housekeeping """
         self.init_server(oldserver, newserver)
+        self.wakeup()
 
-    @notify_downloader
+    @NzbQueueLocker
     def wakeup(self):
         """ Just rattle the semaphore """
         pass
@@ -942,7 +941,7 @@ def clues_too_many(text):
     text = text.lower()
     for clue in ('exceed', 'connections', 'too many', 'threads', 'limit'):
         # Not 'download limit exceeded' error
-        if (clue in text) and ('download' not in text):
+        if (clue in text) and ('download' not in text) and ('byte' not in text):
             return True
     return False
 

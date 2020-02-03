@@ -1,10 +1,10 @@
-                                SABnzbd 2.3.0
+                            SABnzbd 2.3.8
 
 -------------------------------------------------------------------------------
 0) LICENSE
 -------------------------------------------------------------------------------
 
-(c) Copyright 2007-2017 by "The SABnzbd-team" <team@sabnzbd.org>
+(c) Copyright 2007-2019 by "The SABnzbd-team" <team@sabnzbd.org>
 
 This program is free software; you can redistribute it and/or
 modify it under the terms of the GNU General Public License
@@ -71,7 +71,7 @@ Essential modules
 Optional modules
     unzip >= 6.00           http://www.info-zip.org/
     7zip >= 9.20            http://www.7zip.org/
-    sabyenc == 3.0.2        use "pip install sabyenc"
+    sabyenc == 3.3.1        use "pip install sabyenc"
                             More information: https://sabnzbd.org/sabyenc
     cryptography >= 1.0     use "pip install cryptography"
                             Enables certificate generation and detection of encrypted RAR-files
@@ -92,11 +92,10 @@ Start this from a shell terminal (or command prompt):
     python tools/make_mo.py
 
 Start this from a shell terminal (or command prompt):
-    python SABnzbd.py
+    python -OO SABnzbd.py
 
 Within a few seconds your web browser will start and show the user interface.
 Use the "Help" button in the web-interface to be directed to the Help Wiki.
-
 
 -------------------------------------------------------------------------------
 5) TROUBLESHOOTING
@@ -122,7 +121,6 @@ may help you solve problems easier.
 
 Visit our wiki:
     https://sabnzbd.org/wiki/
-
 
 -------------------------------------------------------------------------------
 7) CREDITS

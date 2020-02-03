@@ -1,5 +1,5 @@
-#!/usr/bin/python -OO
-# Copyright 2008-2017 The SABnzbd-Team <team@sabnzbd.org>
+#!/usr/bin/python3 -OO
+# Copyright 2007-2019 The SABnzbd-Team <team@sabnzbd.org>
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License
@@ -20,23 +20,21 @@
 sabnzbd.notifier - Send notifications to any notification services
 """
 
-from __future__ import with_statement
+
 import os.path
 import logging
-import socket
-import urllib2
-import httplib
-import urllib
-import time
+import urllib.request, urllib.error, urllib.parse
+import http.client
 import subprocess
 import json
 from threading import Thread
 
 import sabnzbd
 import sabnzbd.cfg
-from sabnzbd.encoding import unicoder
+from sabnzbd.encoding import platform_btou
 from sabnzbd.constants import NOTIFY_KEYS
-from sabnzbd.misc import split_host, make_script_path
+from sabnzbd.misc import split_host
+from sabnzbd.filesystem import make_script_path
 from sabnzbd.newsunpack import external_script
 
 from gntp.core import GNTPRegister
@@ -134,13 +132,17 @@ def get_prio(gtype, section):
         return -1000
 
 
-def check_cat(section, job_cat):
-    """ Check if `job_cat` is enabled in `section`. * = All """
+def check_cat(section, job_cat, keyword=None):
+    """ Check if `job_cat` is enabled in `section`.
+        * = All, if no other categories selected.
+    """
     if not job_cat:
         return True
     try:
-        section_cats = sabnzbd.config.get_config(section, '%s_cats' % section)()
-        return ('*' in section_cats or job_cat in section_cats)
+        if not keyword:
+            keyword = section
+        section_cats = sabnzbd.config.get_config(section, '%s_cats' % keyword)()
+        return ['*'] == section_cats or job_cat in section_cats
     except TypeError:
         logging.debug('Incorrect Notify option %s:%s_cats', section, section)
         return True
@@ -164,31 +166,26 @@ def send_notification(title, msg, gtype, job_cat=None):
             return send_local_growl(title, msg, gtype)
         else:
             Thread(target=send_growl, args=(title, msg, gtype)).start()
-            time.sleep(0.5)
 
     # Prowl
     if sabnzbd.cfg.prowl_enable() and check_cat('prowl', job_cat):
         if sabnzbd.cfg.prowl_apikey():
             Thread(target=send_prowl, args=(title, msg, gtype)).start()
-            time.sleep(0.5)
 
     # Pushover
     if sabnzbd.cfg.pushover_enable() and check_cat('pushover', job_cat):
         if sabnzbd.cfg.pushover_token():
             Thread(target=send_pushover, args=(title, msg, gtype)).start()
-            time.sleep(0.5)
 
     # Pushbullet
     if sabnzbd.cfg.pushbullet_enable() and check_cat('pushbullet', job_cat):
         if sabnzbd.cfg.pushbullet_apikey() and check_classes(gtype, 'pushbullet'):
             Thread(target=send_pushbullet, args=(title, msg, gtype)).start()
-            time.sleep(0.5)
 
     # Notification script.
     if sabnzbd.cfg.nscript_enable() and check_cat('nscript', job_cat):
         if sabnzbd.cfg.nscript_script():
             Thread(target=send_nscript, args=(title, msg, gtype)).start()
-            time.sleep(0.5)
 
     # NTFOSD
     if have_ntfosd() and sabnzbd.cfg.ntfosd_enable():
@@ -220,7 +217,7 @@ def register_growl(growl_server, growl_password):
     growler = GrowlNotifier(
         applicationName='SABnzbd%s' % sys_name,
         applicationIcon=get_icon(),
-        notifications=[Tx(NOTIFICATION[key]) for key in NOTIFY_KEYS],
+        notifications=[T(NOTIFICATION[key]) for key in NOTIFY_KEYS],
         hostname=host or 'localhost',
         port=port or 23053,
         password=growl_password or None
@@ -272,16 +269,14 @@ def send_growl(title, msg, gtype, test=None):
             _GROWL, error = register_growl(growl_server, growl_password)
         if _GROWL:
             _GROWL_REG = True
-            if isinstance(msg, unicode):
-                msg = msg.decode('utf-8')
-            elif not isinstance(msg, str):
+            if not isinstance(msg, str):
                 msg = str(msg)
             logging.debug('Send to Growl: %s %s %s', gtype, title, msg)
             try:
                 ret = _GROWL.notify(
-                    noteType=Tx(NOTIFICATION.get(gtype, 'other')),
+                    noteType=T(NOTIFICATION.get(gtype, 'other')),
                     title=title,
-                    description=unicoder(msg),
+                    description=msg,
                 )
                 if ret is None or isinstance(ret, bool):
                     return None
@@ -318,7 +313,7 @@ if _HAVE_CLASSIC_GROWL:
         """ Send to local Growl server, OSX-only """
         global _local_growl
         if not _local_growl:
-            notes = [Tx(NOTIFICATION[key]) for key in NOTIFY_KEYS]
+            notes = [T(NOTIFICATION[key]) for key in NOTIFY_KEYS]
             _local_growl = Growl.GrowlNotifier(
                 applicationName='SABnzbd',
                 applicationIcon=_OSX_ICON,
@@ -326,7 +321,7 @@ if _HAVE_CLASSIC_GROWL:
                 defaultNotifications=notes
             )
             _local_growl.register()
-        _local_growl.notify(Tx(NOTIFICATION.get(gtype, 'other')), title, msg)
+        _local_growl.notify(T(NOTIFICATION.get(gtype, 'other')), title, msg)
         return None
 
 
@@ -371,9 +366,9 @@ def send_notification_center(title, msg, gtype):
     tool = ncenter_path()
     if tool:
         try:
-            command = [tool, '-title', title, '-message', msg, '-group', Tx(NOTIFICATION.get(gtype, 'other'))]
+            command = [tool, '-title', title, '-message', msg, '-group', T(NOTIFICATION.get(gtype, 'other'))]
             proc = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=False)
-            output = proc.stdout.read()
+            output = platform_btou(proc.stdout.read())
             proc.wait()
             if 'Notification delivered' in output or 'Removing previously' in output:
                 output = ''
@@ -411,9 +406,9 @@ def send_prowl(title, msg, gtype, force=False, test=None):
     if not apikey:
         return T('Cannot send, missing required data')
 
-    title = Tx(NOTIFICATION.get(gtype, 'other'))
-    title = urllib2.quote(title.encode('utf8'))
-    msg = urllib2.quote(msg.encode('utf8'))
+    title = T(NOTIFICATION.get(gtype, 'other'))
+    title = urllib.parse.quote(title.encode('utf8'))
+    msg = urllib.parse.quote(msg.encode('utf8'))
     prio = get_prio(gtype, 'prowl')
 
     if force:
@@ -423,7 +418,7 @@ def send_prowl(title, msg, gtype, force=False, test=None):
         url = 'https://api.prowlapp.com/publicapi/add?apikey=%s&application=SABnzbd' \
               '&event=%s&description=%s&priority=%d' % (apikey, title, msg, prio)
         try:
-            urllib2.urlopen(url)
+            urllib.request.urlopen(url)
             return ''
         except:
             logging.warning(T('Failed to send Prowl message'))
@@ -448,7 +443,7 @@ def send_pushover(title, msg, gtype, force=False, test=None):
     if not apikey or not userkey:
         return T('Cannot send, missing required data')
 
-    title = Tx(NOTIFICATION.get(gtype, 'other'))
+    title = T(NOTIFICATION.get(gtype, 'other'))
     prio = get_prio(gtype, 'pushover')
 
     if force:
@@ -465,7 +460,7 @@ def send_pushover(title, msg, gtype, force=False, test=None):
                  "expire": emergency_expire
         }
         return do_send_pushover(body)
-    if prio > -3 and prio < 2:
+    if -3 < prio < 2:
         body = { "token": apikey,
                  "user": userkey,
                  "device": device,
@@ -477,8 +472,8 @@ def send_pushover(title, msg, gtype, force=False, test=None):
 
 def do_send_pushover(body):
     try:
-        conn = httplib.HTTPSConnection("api.pushover.net:443")
-        conn.request("POST", "/1/messages.json", urllib.urlencode(body),
+        conn = http.client.HTTPSConnection("api.pushover.net:443")
+        conn.request("POST", "/1/messages.json", urllib.parse.urlencode(body),
                      {"Content-type": "application/x-www-form-urlencoded"})
         res = conn.getresponse()
         if res.status != 200:
@@ -503,10 +498,10 @@ def send_pushbullet(title, msg, gtype, force=False, test=None):
     if not apikey:
         return T('Cannot send, missing required data')
 
-    title = u'SABnzbd: ' + Tx(NOTIFICATION.get(gtype, 'other'))
+    title = 'SABnzbd: ' + T(NOTIFICATION.get(gtype, 'other'))
 
     try:
-        conn = httplib.HTTPSConnection('api.pushbullet.com:443')
+        conn = http.client.HTTPSConnection('api.pushbullet.com:443')
         conn.request('POST', '/v2/pushes',
             json.dumps({
                 'type': 'note',
@@ -538,7 +533,7 @@ def send_nscript(title, msg, gtype, force=False, test=None):
         parameters = sabnzbd.cfg.nscript_parameters()
     if not script:
         return T('Cannot send, missing required data')
-    title = u'SABnzbd: ' + Tx(NOTIFICATION.get(gtype, 'other'))
+    title = 'SABnzbd: ' + T(NOTIFICATION.get(gtype, 'other'))
 
     if force or check_classes(gtype, 'nscript'):
         script_path = make_script_path(script)
